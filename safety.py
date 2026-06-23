@@ -1,0 +1,227 @@
+"""
+Camada de segurança: estado persistente, limites (caps), delays humanos,
+janela de horário e kill-switch de bloqueio.
+
+Nada aqui fala com o Instagram — só guarda estado e decide se PODE agir.
+"""
+import json
+import os
+import time
+import random
+import logging
+from datetime import datetime
+
+import config
+
+
+# ───────────────────────────── log ─────────────────────────────
+def setup_logger():
+    os.makedirs(config.OUTPUT_DIR, exist_ok=True)
+    logger = logging.getLogger("autolike")
+    logger.setLevel(logging.INFO)
+    if logger.handlers:
+        return logger
+    fmt = logging.Formatter("%(asctime)s  %(levelname)-5s  %(message)s",
+                            datefmt="%Y-%m-%d %H:%M:%S")
+    fh = logging.FileHandler(config.LOG_FILE, encoding="utf-8")
+    fh.setFormatter(fmt)
+    ch = logging.StreamHandler()
+    ch.setFormatter(fmt)
+    logger.addHandler(fh)
+    logger.addHandler(ch)
+    return logger
+
+
+log = setup_logger()
+
+
+# ────────────────────────── exceções ───────────────────────────
+class BloqueioDetectado(Exception):
+    """Instagram sinalizou ação bloqueada / checkpoint / spam."""
+
+
+class LimiteAtingido(Exception):
+    """Bateu um cap (diário/horário) — parar com elegância, sem ser bloqueio."""
+
+
+# ─────────────────── detecção de bloqueio ───────────────────────
+# Mensagens de bloqueio do IG vêm no campo "message" do JSON de resposta.
+MENSAGENS_BLOQUEIO = {
+    "feedback_required", "checkpoint_required", "challenge_required",
+    "login_required", "consent_required", "rate_limit_error",
+}
+
+
+def checar_bloqueio(status_code, texto):
+    """Levanta BloqueioDetectado SÓ com sinal estruturado real de bloqueio.
+
+    Importante: NÃO faz busca por substring no corpo inteiro — uma lista de
+    curtidores legítima pode conter 'spam' no nome/username de alguém e dar
+    falso positivo. Checa campos específicos do JSON de resposta.
+    """
+    texto = texto or ""
+    if status_code == 429:
+        raise BloqueioDetectado(f"HTTP 429 (rate limit): {texto[:400]}")
+
+    # tenta parsear o JSON da resposta
+    body = texto[len("for (;;);"):] if texto.startswith("for (;;);") else texto
+    try:
+        j = json.loads(body)
+    except Exception:
+        j = None
+
+    if isinstance(j, dict):
+        msg = str(j.get("message", "")).lower()
+        status = str(j.get("status", "")).lower()
+        if msg in MENSAGENS_BLOQUEIO:
+            raise BloqueioDetectado(f"message={msg}: {texto[:400]}")
+        if j.get("spam") is True:                       # flag explícita de spam do IG
+            raise BloqueioDetectado(f"spam=true: {texto[:400]}")
+        if j.get("checkpoint_url") or j.get("challenge"):
+            raise BloqueioDetectado(f"checkpoint/challenge: {texto[:400]}")
+        # status=fail acompanhado de uma mensagem de bloqueio conhecida
+        if status == "fail" and any(k in msg for k in ("feedback", "checkpoint", "challenge", "blocked")):
+            raise BloqueioDetectado(f"status=fail {msg}: {texto[:400]}")
+        return
+
+    # resposta não-JSON num endpoint de API = sessão caída / parede de login
+    if body.lstrip()[:1] in ("<",) and status_code in (200, 302, 400):
+        raise BloqueioDetectado(f"HTTP {status_code}: resposta HTML (sessão caída?) {body[:200]}")
+
+
+# ───────────────────────── estado ──────────────────────────────
+class State:
+    def __init__(self, path=config.STATE_FILE):
+        self.path = path
+        self.data = {
+            "followed_user_ids": [],
+            "processed_post_codes": [],
+            "processed_message_ids": [],
+            "follow_events": [],          # epochs dos follows (para caps rolantes)
+            "cooldown_until": 0,
+        }
+        self._load()
+
+    def _load(self):
+        if os.path.exists(self.path):
+            try:
+                with open(self.path, encoding="utf-8") as f:
+                    self.data.update(json.load(f))
+            except Exception as e:
+                log.warning("Não consegui ler state.json (%s); começando limpo.", e)
+
+    def save(self):
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        with open(self.path, "w", encoding="utf-8") as f:
+            json.dump(self.data, f, ensure_ascii=False, indent=1)
+
+    # --- sets de controle ---
+    def ja_seguiu(self, uid):
+        return str(uid) in self.data["followed_user_ids"]
+
+    def marcar_seguido(self, uid):
+        uid = str(uid)
+        if uid not in self.data["followed_user_ids"]:
+            self.data["followed_user_ids"].append(uid)
+        self.data["follow_events"].append(int(time.time()))
+        self.save()
+
+    def post_processado(self, code, message_id):
+        return (code in self.data["processed_post_codes"]
+                or message_id in self.data["processed_message_ids"])
+
+    def marcar_post(self, code, message_id):
+        if code and code not in self.data["processed_post_codes"]:
+            self.data["processed_post_codes"].append(code)
+        if message_id and message_id not in self.data["processed_message_ids"]:
+            self.data["processed_message_ids"].append(message_id)
+        self.save()
+
+    # --- caps rolantes ---
+    def _prune(self):
+        agora = int(time.time())
+        self.data["follow_events"] = [t for t in self.data["follow_events"]
+                                      if agora - t < 24 * 3600]
+
+    def follows_ultima_hora(self):
+        self._prune()
+        agora = int(time.time())
+        return sum(1 for t in self.data["follow_events"] if agora - t < 3600)
+
+    def follows_ultimo_dia(self):
+        self._prune()
+        return len(self.data["follow_events"])
+
+    # --- cooldown ---
+    def em_cooldown(self):
+        return time.time() < self.data.get("cooldown_until", 0)
+
+    def cooldown_restante_h(self):
+        return max(0, (self.data.get("cooldown_until", 0) - time.time()) / 3600)
+
+    def ativar_cooldown(self, horas):
+        self.data["cooldown_until"] = int(time.time() + horas * 3600)
+        self.save()
+
+    def limpar_cooldown(self):
+        self.data["cooldown_until"] = 0
+        self.save()
+
+
+# ───────────────────── limites / delays ────────────────────────
+class Guard:
+    """Decide se pode agir e aplica as pausas humanas."""
+
+    def __init__(self, state: State, dry_run=False):
+        self.state = state
+        self.dry_run = dry_run
+        self._follows_no_run = 0
+        self._dry_extra = 0          # follows simulados no dry-run (p/ caps fiéis)
+
+    def checar_janela(self, ignorar=False):
+        if ignorar or not config.APLICAR_CAPS:
+            return
+        h = datetime.now().hour
+        ini, fim = config.ACTIVE_HOURS
+        if not (ini <= h < fim):
+            raise LimiteAtingido(
+                f"Fora da janela de horário ({ini}h–{fim}h). Hora atual: {h}h.")
+
+    def checar_cooldown(self):
+        if self.state.em_cooldown():
+            raise LimiteAtingido(
+                f"Em cooldown de bloqueio por mais {self.state.cooldown_restante_h():.1f}h.")
+
+    def pode_seguir(self):
+        """Levanta LimiteAtingido se algum cap foi batido (conta dry-run também)."""
+        if not config.APLICAR_CAPS:
+            return                       # modo descoberta: sem cap de volume
+        if self.state.follows_ultimo_dia() + self._dry_extra >= config.MAX_FOLLOWS_DIA:
+            raise LimiteAtingido(f"Cap diário atingido ({config.MAX_FOLLOWS_DIA}).")
+        if self.state.follows_ultima_hora() + self._dry_extra >= config.MAX_FOLLOWS_HORA:
+            raise LimiteAtingido(f"Cap horário atingido ({config.MAX_FOLLOWS_HORA}).")
+
+    def pos_follow(self):
+        """Chamar após cada follow real: contabiliza e dorme."""
+        self._follows_no_run += 1
+        if self._follows_no_run % config.PAUSA_LONGA_CADA == 0:
+            self.dormir(config.PAUSA_LONGA, "pausa longa")
+        else:
+            self.dormir(config.DELAY_FOLLOW, "entre follows")
+
+    def pos_follow_dry(self):
+        """Chamar após cada follow simulado: só contabiliza p/ o cap do dry-run."""
+        self._dry_extra += 1
+
+    def total_follows(self):
+        """Follows feitos nesta execução (reais ou simulados)."""
+        return self._dry_extra if self.dry_run else self._follows_no_run
+
+    def dormir(self, faixa, motivo=""):
+        a, b = faixa
+        t = random.uniform(a, b)
+        if self.dry_run:
+            log.info("[dry-run] dormiria %.0fs (%s)", t, motivo)
+            return
+        log.info("dormindo %.0fs (%s)", t, motivo)
+        time.sleep(t)
