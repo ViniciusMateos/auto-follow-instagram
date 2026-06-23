@@ -65,19 +65,24 @@ IG e diz **em quantos follows travou**, e ativa cooldown. Pra voltar ao modo seg
 (caps de 60/dia, 15/hora, janela 9–23h), é só `APLICAR_CAPS = True`.
 
 ## Configuração — `config.py`
-Todos os limites e delays ficam lá. Padrões (conservadores):
+Todos os limites e delays ficam lá:
 
 | Parâmetro | Padrão | O quê |
 |-----------|--------|-------|
-| `MAX_FOLLOWS_DIA` | 60 | teto de follows por dia (rolling 24h) |
-| `MAX_FOLLOWS_HORA` | 15 | teto por hora |
-| `MAX_FOLLOWS_POR_POST` | 40 | corta posts com lista gigante |
-| `MAX_POSTS_POR_RUN` | 5 | posts por execução |
-| `DELAY_FOLLOW` | 25–70 s | pausa aleatória entre follows |
+| `APLICAR_CAPS` | False | False = modo descoberta (roda até bloquear); True = respeita os caps |
+| `MAX_FOLLOWS_DIA` | 60 | teto por dia (só com `APLICAR_CAPS=True`) |
+| `MAX_FOLLOWS_HORA` | 15 | teto por hora (só com `APLICAR_CAPS=True`) |
+| `MAX_POSTS_POR_RUN` | 5 | posts por execução (só com `APLICAR_CAPS=True`) |
+| `DELAY_FOLLOW` | 0–5 s | pausa aleatória entre follows |
 | `DELAY_POST` | 3–8 min | pausa entre posts |
-| `ACTIVE_HOURS` | 9–23 | só roda em horário "humano" |
-| `SEGUIR_PRIVADOS` | False | privados viram pedido pendente |
+| `PAUSA_LONGA` | 5–15 s | respiro a cada 12 follows |
+| `ACTIVE_HOURS` | 9–23 | só roda em horário "humano" (só com `APLICAR_CAPS=True`) |
+| `SEGUIR_PRIVADOS` | True | segue privados também (vira pedido pendente) |
 | `COOLDOWN_BLOQUEIO_HORAS` | 36 | recuo após sinal de bloqueio |
+
+> Sem cap por post: segue **todos** os curtidores de cada post. Públicas viram
+> "Seguindo"; privadas viram **pedido pendente** (`⏳` no log) e não contam no
+> "Seguindo" do perfil.
 
 ## Saídas — `output/`
 - `state.json` — usuários já seguidos, posts feitos, eventos de follow (caps), cooldown.
