@@ -6,6 +6,7 @@ Nada aqui fala com o Instagram — só guarda estado e decide se PODE agir.
 """
 import json
 import os
+import sys
 import time
 import random
 import logging
@@ -17,6 +18,11 @@ import config
 # ───────────────────────────── log ─────────────────────────────
 def setup_logger():
     os.makedirs(config.OUTPUT_DIR, exist_ok=True)
+    # força UTF-8 no console (evita emoji bagunçado/erro no Windows/PowerShell)
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     logger = logging.getLogger("autolike")
     logger.setLevel(logging.INFO)
     if logger.handlers:
@@ -25,7 +31,7 @@ def setup_logger():
                             datefmt="%Y-%m-%d %H:%M:%S")
     fh = logging.FileHandler(config.LOG_FILE, encoding="utf-8")
     fh.setFormatter(fmt)
-    ch = logging.StreamHandler()
+    ch = logging.StreamHandler(sys.stdout)   # stdout (não stderr) p/ não virar "erro" no PowerShell
     ch.setFormatter(fmt)
     logger.addHandler(fh)
     logger.addHandler(ch)
@@ -33,6 +39,15 @@ def setup_logger():
 
 
 log = setup_logger()
+
+
+def fmt_tempo(segundos):
+    """Formata duração: <60s vira 'Xs'; acima disso, 'Xm Ys' (ou 'Xm' redondo)."""
+    seg = int(round(segundos))
+    if seg < 60:
+        return f"{seg}s"
+    m, s = divmod(seg, 60)
+    return f"{m}m {s}s" if s else f"{m}m"
 
 
 # ────────────────────────── exceções ───────────────────────────
@@ -177,6 +192,10 @@ class Guard:
         self.dry_run = dry_run
         self._follows_no_run = 0
         self._dry_extra = 0          # follows simulados no dry-run (p/ caps fiéis)
+        # saldo da execução (p/ o resumo final, mesmo em erro/bloqueio/Ctrl+C)
+        self.seguidos = 0            # públicas que viraram "Seguindo"
+        self.pendentes = 0           # privadas (pedido enviado)
+        self.pulados = 0             # já seguia / privado(config) / etc.
 
     def checar_janela(self, ignorar=False):
         if ignorar or not config.APLICAR_CAPS:
@@ -221,7 +240,7 @@ class Guard:
         a, b = faixa
         t = random.uniform(a, b)
         if self.dry_run:
-            log.info("[dry-run] dormiria %.0fs (%s)", t, motivo)
+            log.info("[dry-run] dormiria %s (%s)", fmt_tempo(t), motivo)
             return
-        log.info("dormindo %.0fs (%s)", t, motivo)
+        log.info("dormindo %s (%s)", fmt_tempo(t), motivo)
         time.sleep(t)
