@@ -60,9 +60,9 @@ marcado e retoma no próximo run, pulando quem já seguiu.
 ### ⚠️ Modo descoberta (padrão atual)
 `APLICAR_CAPS = False` no `config.py`: roda **sem cap de follow e sem janela de
 horário**, seguindo post após post **até o Instagram bloquear**. O kill-switch
-continua ligado — quando o IG bloquear, ele **para na hora**, mostra a mensagem do
-IG e diz **em quantos follows travou**, e ativa cooldown. Pra voltar ao modo seguro
-(caps de 60/dia, 15/hora, janela 9–23h), é só `APLICAR_CAPS = True`.
+continua ligado — quando o IG bloquear, ele **para o run na hora**, mostra a
+mensagem do IG, registra o erro em `output/logs/` e imprime o saldo. Pra voltar ao
+modo seguro (caps de 60/dia, 15/hora, janela 9–23h), é só `APLICAR_CAPS = True`.
 
 ## Configuração — `config.py`
 Todos os limites e delays ficam lá:
@@ -78,16 +78,19 @@ Todos os limites e delays ficam lá:
 | `PAUSA_LONGA` | 5–15 s | respiro a cada 12 follows |
 | `ACTIVE_HOURS` | 9–23 | só roda em horário "humano" (só com `APLICAR_CAPS=True`) |
 | `SEGUIR_PRIVADOS` | True | segue privados também (vira pedido pendente) |
-| `COOLDOWN_BLOQUEIO_HORAS` | 36 | recuo após sinal de bloqueio |
 
 > Sem cap por post: segue **todos** os curtidores de cada post. Públicas viram
-> "Seguindo"; privadas viram **pedido pendente** (`⏳` no log) e não contam no
-> "Seguindo" do perfil.
+> "Seguindo" (`+` no log); privadas viram **pedido pendente** (`~` no log) e não
+> contam no "Seguindo" do perfil.
 
 ## Saídas — `output/`
-- `state.json` — usuários já seguidos, posts feitos, eventos de follow (caps), cooldown.
+- `state.json` — usuários já seguidos, posts feitos, eventos de follow (caps).
 - `run.log` — log de cada ação.
+- `logs/erro_<data>.log` — traceback completo quando dá erro/bloqueio (console mostra só o resumido).
 - `debug_messages.json` — só com `--debug`.
+
+No fim de toda execução (inclusive em erro, bloqueio ou Ctrl+C) ele imprime o
+**saldo**: seguidas (públicas), solicitadas (privadas) e puladas.
 
 ## Arquitetura
 | Arquivo | Papel |
@@ -103,8 +106,8 @@ Resumo do que segura (e do que detona) a conta:
 - **Bloqueio temporário ("Ação bloqueada").** Punição mais comum, vem antes do ban.
   1ª vez: horas a 24–48h. Reincidência escala: 3 dias → 1 semana → 2 semanas →
   conta desativada / verificação de identidade. O script detecta os sinais
-  (`feedback_required`, `checkpoint_required`, `spam`, HTTP 429…) e entra em
-  **cooldown** automático — não desative isso.
+  (`feedback_required`, `checkpoint_required`, `spam`, HTTP 429, página HTML…) e
+  **para o run na hora** — não fica insistindo (insistir é o que piora o bloqueio).
 - **Limites realistas (conta antiga e aquecida):** ~100–150 follows/dia no teto
   absoluto; o seguro é começar com **50–80/dia**, ~10–20/hora, com intervalos
   aleatórios. Conta nova: bem menos.
@@ -112,7 +115,7 @@ Resumo do que segura (e do que detona) a conta:
   programático (use sempre a sessão salva, nunca usuário/senha no código), IP de
   datacenter/VPN (use seu IP residencial normal), rodar 24/7.
 - **Mitigações já embutidas:** caps diário/horário, delays aleatórios, janela de
-  horário, pular já-seguidos/pendentes, kill-switch + cooldown, estado persistente.
+  horário, pular já-seguidos/pendentes, kill-switch (para no bloqueio), estado persistente.
 
 ### Pontos que podem precisar de ajuste no 1º run real
 Foram inferidos da captura e podem variar conforme o build do IG:
