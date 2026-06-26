@@ -14,7 +14,7 @@ import re
 from playwright.sync_api import sync_playwright
 
 import config
-from safety import log, checar_bloqueio, BloqueioDetectado
+from safety import log, checar_bloqueio, BloqueioDetectado, explicar_status
 
 # doc_ids capturados
 DOC_MESSAGE_LIST = "26407294142279455"   # IGDMessageListOffMsysQuery
@@ -145,14 +145,27 @@ class IG:
     # ───────────────── ciclo de vida ─────────────────
     def abrir(self):
         self._pw = sync_playwright().start()
-        self.ctx = self._pw.chromium.launch_persistent_context(
-            config.USER_DATA_DIR,
+        kwargs = dict(
             headless=config.HEADLESS,
             locale=config.LOCALE,
             user_agent=config.USER_AGENT,
             viewport={"width": 1280, "height": 820},
             args=["--disable-blink-features=AutomationControlled"],
+            # tira a tarja "controlado por software automatizado" e o sinal de bot
+            # (ajuda o reCAPTCHA do login a funcionar)
+            ignore_default_args=["--enable-automation"],
         )
+        if getattr(config, "USAR_CHROME_REAL", False):
+            kwargs["channel"] = "chrome"     # usa o Chrome instalado (menos detectável)
+        try:
+            self.ctx = self._pw.chromium.launch_persistent_context(config.USER_DATA_DIR, **kwargs)
+        except Exception as e:
+            if "channel" in kwargs:          # Chrome não encontrado → cai pro Chromium
+                log.warning("Chrome real não encontrado (%s); usando Chromium do Playwright.", e)
+                kwargs.pop("channel")
+                self.ctx = self._pw.chromium.launch_persistent_context(config.USER_DATA_DIR, **kwargs)
+            else:
+                raise
         self.page = self.ctx.pages[0] if self.ctx.pages else self.ctx.new_page()
         return self
 
@@ -186,6 +199,12 @@ class IG:
     def logado(self) -> bool:
         # sessionid é HttpOnly → invisível pro document.cookie; lê pelo contexto.
         return bool(self._cookies().get("sessionid"))
+
+    def importar_cookies(self, cookies):
+        """Injeta cookies (do navegador normal) no perfil — evita o login/reCAPTCHA."""
+        self.ctx.add_cookies(cookies)
+        self.ir("https://www.instagram.com/")
+        return self.logado()
 
     def carregar_tokens(self):
         self.tokens = self.page.evaluate(JS_TOKENS)
@@ -281,9 +300,11 @@ class IG:
             return _parse_json(res["text"])
         except Exception:
             # resposta vazia / HTML / 5xx que escapou do checar_bloqueio = throttle/erro do IG
+            st = res.get("status")
+            corpo = (res.get("text") or "").strip()
+            detalhe = f'o IG respondeu: "{corpo[:150]}"' if corpo else "o IG não retornou nada (corpo vazio)"
             raise BloqueioDetectado(
-                f"follow retornou resposta inválida (HTTP {res.get('status')}): "
-                f"{(res.get('text') or '')[:120]!r}")
+                f"follow travado — HTTP {st}: {explicar_status(st)}. {detalhe}")
 
     def reagir_coracao(self, message_id):
         """Reage ❤️ na mensagem do post dentro da thread."""

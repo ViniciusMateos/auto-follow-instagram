@@ -28,6 +28,40 @@ from ig import IG, extrair_post, tem_reacao
 LOGS_ERRO_DIR = os.path.join(config.OUTPUT_DIR, "logs")
 
 
+def _carregar_cookies(path):
+    """Lê um JSON de cookies (ex: extensão Cookie-Editor) e converte pro formato Playwright."""
+    import json
+    with open(path, encoding="utf-8") as f:
+        raw = json.load(f)
+    if isinstance(raw, dict) and "cookies" in raw:
+        raw = raw["cookies"]
+    ss_map = {"no_restriction": "None", "unspecified": "Lax", "lax": "Lax",
+              "strict": "Strict", "none": "None"}
+    out = []
+    for c in raw:
+        dom = c.get("domain") or ".instagram.com"
+        ss = ss_map.get(str(c.get("sameSite", "")).lower(), "Lax")
+        ck = {"name": c["name"], "value": c["value"], "domain": dom,
+              "path": c.get("path", "/"), "httpOnly": bool(c.get("httpOnly")),
+              "secure": bool(c.get("secure", True)), "sameSite": ss}
+        exp = c.get("expirationDate") or c.get("expires")
+        if exp and not c.get("session"):
+            ck["expires"] = int(float(exp))
+        out.append(ck)
+    return out
+
+
+def modo_importar_cookies(path):
+    cookies = _carregar_cookies(path)
+    log.info("Importando %d cookies de %s…", len(cookies), path)
+    with IG() as ig:
+        if ig.importar_cookies(cookies):
+            log.info("✓ Sessão logada! Pode rodar `python main.py --dry-run`.")
+        else:
+            log.warning("Importou, mas não achei sessionid. Confira se exportou os cookies "
+                        "do instagram.com COM a conta logada (precisa do sessionid).")
+
+
 def imprimir_saldo(guard, motivo=""):
     """Resumo final SEMPRE impresso (fim normal, erro, bloqueio ou Ctrl+C)."""
     extra = f" — {motivo}" if motivo else ""
@@ -229,12 +263,16 @@ def run(dry=False, start_after=None, debug=False, ignorar_janela=False):
 def main():
     ap = argparse.ArgumentParser(description="auto-like-instagram")
     ap.add_argument("--login", action="store_true", help="login manual (1ª vez)")
+    ap.add_argument("--import-cookies", metavar="FILE", help="importa cookies (JSON do Cookie-Editor) e pula o login")
     ap.add_argument("--dry-run", action="store_true", help="simula sem agir")
     ap.add_argument("--debug", action="store_true", help="dump da 1ª página de mensagens")
     ap.add_argument("--start-after", metavar="CODE", help="começar após este shortcode")
     ap.add_argument("--ignore-window", action="store_true", help="ignora janela de horário")
     a = ap.parse_args()
 
+    if a.import_cookies:
+        modo_importar_cookies(a.import_cookies)
+        return
     if a.login:
         modo_login()
         return

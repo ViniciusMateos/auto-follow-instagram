@@ -22,6 +22,8 @@ THREAD_URL = f"https://www.instagram.com/direct/t/{THREAD_ID}/"
 # Na 1ª vez rode `python main.py --login` e faça login manual nessa janela.
 USER_DATA_DIR = os.path.join(_BASE, "browser_profile")   # ancorado na pasta do projeto
 HEADLESS = False                       # headed é menos detectável; mude por conta própria
+USAR_CHROME_REAL = True                # usa o Chrome instalado (channel="chrome") em vez do
+                                       # Chromium do Playwright — menos detectável, ajuda no login/reCAPTCHA
 LOCALE = "pt-BR"
 # Use o MESMO User-Agent do seu Chrome real (o da captura):
 USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
