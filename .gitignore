@@ -1,5 +1,8 @@
 # sessão logada do navegador (NUNCA commitar — contém cookies/sessionid)
 browser_profile/
+cookies/
+*cookies*.json
+*.session
 
 # saídas em runtime
 output/
