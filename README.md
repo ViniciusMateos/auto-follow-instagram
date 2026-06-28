@@ -96,10 +96,18 @@ Todos os limites e delays ficam lá:
 - `state.json` — usuários já seguidos, posts feitos, eventos de follow (caps).
 - `run.log` — log de cada ação.
 - `logs/erro_<data>.log` — traceback completo quando dá erro/bloqueio (console mostra só o resumido).
+- `logs/diag_<data>.png` — **screenshot** do navegador no momento da parada (pra você ver se é login/checkpoint ou feed normal).
 - `debug_messages.json` — só com `--debug`.
 
 No fim de toda execução (inclusive em erro, bloqueio ou Ctrl+C) ele imprime o
 **saldo**: seguidas (públicas), solicitadas (privadas) e puladas.
+
+### Erro transitório × bloqueio real
+Respostas 5xx/HTML/vazias (ex: HTTP 572, página do app) são **transitórias**: o bot
+**tenta de novo** (recarregando os tokens) e, se não rolar, **pula a pessoa e segue**.
+Só **para** em sinal estruturado real (`feedback_required`/`spam`/`checkpoint`/`429`)
+ou após muitas falhas seguidas — e aí salva o screenshot + diz se a sessão está
+logada (distingue "ação bloqueada, conta sã" de "sessão caiu").
 
 ## Arquitetura
 | Arquivo | Papel |
