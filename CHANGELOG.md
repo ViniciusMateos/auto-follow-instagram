@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.3] — 2026-06-28
+
+### Adicionado
+- feat: retry em erro transitório (5xx/HTML/vazio, ex: HTTP 572) recarregando os tokens, em vez de tratar como bloqueio
+- feat: screenshot de diagnóstico (`logs/diag_<data>.png`) salvo na parada — mostra se é login/checkpoint ou feed normal
+
+### Modificado
+- update: erro transitório não derruba mais o run — pula a pessoa e segue; só para em sinal estruturado real ou após muitas falhas seguidas
+- update: mensagem de parada distingue "ação bloqueada (sessão OK)" de "sessão caiu"
+
+### Documentação
+- docs: README com a lógica de retry × bloqueio e o screenshot de diagnóstico
+
 ## [1.0.2] — 2026-06-26
 
 ### Adicionado
