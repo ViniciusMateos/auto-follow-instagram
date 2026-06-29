@@ -62,27 +62,36 @@ IGDirectReactionSendMutation                   # reage ❤️ na mensagem do pos
 - **`friendship_status.following`** = já segue → pular. **`outgoing_request`** = pedido
   pendente → pular. `is_private` = seguir gera *pedido* (pendente), não follow imediato.
 
-## 3) Seguir — friendships/create
+## 3) Seguir — `usePolarisFollowMutation` (GraphQL)
 
-- `POST https://www.instagram.com/api/v1/friendships/create/{user_id}/`
+> ⚠️ O endpoint REST legado `POST /api/v1/friendships/create/{id}/` **não funciona
+> mais** a partir da origem web: o IG responde com 302 → shell HTML (HTTP 200 + página).
+> Confirmado por captura ao vivo (`diag_capturar_follow.py`): o instagram.com moderno
+> segue por uma **mutation GraphQL**. Use esta.
+
+- `POST https://www.instagram.com/api/graphql`
 - `Content-Type: application/x-www-form-urlencoded`
-- Body:
+- Form: `fb_api_req_friendly_name=usePolarisFollowMutation`, `doc_id=26508036048874888`,
+  + boilerplate (`fb_dtsg`, `lsd`, `jazoest`, `__a=1`, `av`, `__comet_req=7`, ...),
+  + `variables` (URL-encoded):
+```json
+{ "target_user_id": "5550610199",
+  "container_module": "profile",
+  "nav_chain": "" }
 ```
-container_module=single_post
-include_follow_friction_check=true
-nav_chain=<opcional>
-user_id=<pk>
-jazoest=<token>
-fb_dtsg=<token>
-```
-- Headers iguais aos do likers (App-ID, ASBD, CSRFToken, WWW-Claim, cookies).
+- Headers: `X-FB-Friendly-Name: usePolarisFollowMutation`, `X-CSRFToken`, `X-ASBD-ID`,
+  `X-IG-App-ID`, cookies da sessão.
 - Resposta:
 ```json
-{ "friendship_status": { "following": true, "outgoing_request": false, ... },
-  "previous_following": false, "error": null, "status": "ok" }
+{ "data": { "xdt_create_friendship": {
+    "username": "...", "id": "5550610199",
+    "friendship_status": { "following": true, "outgoing_request": false,
+                           "followed_by": false, "is_bestie": false } } },
+  "extensions": { "is_final": true } }
 ```
-- Resposta de bloqueio (parar imediatamente): `status` ≠ `ok`, `feedback_required`,
-  `checkpoint_required`, `spam=true`, ou HTTP 400/429.
+  → privado vira `following:false, outgoing_request:true` (pedido pendente).
+- Resposta de bloqueio (parar imediatamente): `errors[]` com `feedback_required`/
+  `checkpoint`/`spam`/`blocked`, ou HTTP 400/429.
 
 ## 4) Reagir ❤️ na mensagem — `IGDirectReactionSendMutation`
 
