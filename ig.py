@@ -20,6 +20,7 @@ from safety import log, checar_bloqueio, BloqueioDetectado, ErroTransitorio, exp
 # doc_ids capturados
 DOC_MESSAGE_LIST = "26407294142279455"   # IGDMessageListOffMsysQuery
 DOC_REACTION = "24374451552236906"       # IGDirectReactionSendMutation
+DOC_FOLLOW = "26508036048874888"         # usePolarisFollowMutation (follow real do web)
 
 
 # ───────────── JS injetado na página logada ─────────────
@@ -53,24 +54,6 @@ async (p) => {
     'x-ig-app-id': p.appid, 'x-asbd-id': p.asbd, 'x-csrftoken': p.csrf,
     'x-requested-with': 'XMLHttpRequest', 'x-ig-www-claim': p.claim,
   }});
-  return { status: r.status, text: await r.text() };
-}
-"""
-
-JS_FOLLOW = r"""
-async (p) => {
-  const body = new URLSearchParams();
-  body.set('container_module', 'single_post');
-  body.set('include_follow_friction_check', 'true');
-  body.set('user_id', p.user_id);
-  body.set('jazoest', p.jazoest);
-  body.set('fb_dtsg', p.dtsg);
-  const r = await fetch('/api/v1/friendships/create/' + p.user_id + '/', {
-    method: 'POST', credentials: 'include', headers: {
-      'content-type': 'application/x-www-form-urlencoded',
-      'x-ig-app-id': p.appid, 'x-asbd-id': p.asbd, 'x-csrftoken': p.csrf,
-      'x-requested-with': 'XMLHttpRequest', 'x-ig-www-claim': p.claim,
-    }, body: body.toString() });
   return { status: r.status, text: await r.text() };
 }
 """
@@ -291,34 +274,63 @@ class IG:
         return users
 
     def seguir(self, user_id, tentativas=None):
-        """Executa o follow. Retorna o dict de resposta do IG.
+        """Executa o follow via mutation GraphQL `usePolarisFollowMutation` (o caminho
+        REAL do instagram.com web — capturado do clique manual; ver API_REFERENCE.md).
+
+        Retorna um dict no formato `{"friendship_status": {...}, "status": "ok"}`
+        (compatível com quem chama em main.py).
 
         Bloqueio REAL (feedback_required/spam/checkpoint/429) → BloqueioDetectado (para).
-        Resposta transitória (5xx/HTML/vazia) → tenta de novo recarregando os tokens;
-        se esgotar as tentativas, levanta ErroTransitorio (quem chama pula e continua).
+        Resposta transitória (5xx/HTML/vazia/sem friendship_status) → tenta de novo
+        recarregando os tokens; se esgotar, levanta ErroTransitorio (quem chama pula).
         """
         tentativas = tentativas or getattr(config, "TENTATIVAS_POR_FOLLOW", 3)
         ult = None
         for t in range(tentativas):
-            res = self.page.evaluate(JS_FOLLOW, {
-                **self._base(), "user_id": str(user_id),
-                "dtsg": self.tokens.get("dtsg"), "jazoest": self.tokens.get("jazoest"),
+            variables = {
+                "target_user_id": str(user_id),
+                "container_module": "profile",
+                "nav_chain": "",
+            }
+            res = self.page.evaluate(JS_GRAPHQL, {
+                **self._base(), "av": self.tokens.get("av"),
+                "dtsg": self.tokens.get("dtsg"), "lsd": self.tokens.get("lsd"),
+                "jazoest": self.tokens.get("jazoest"),
+                "friendly": "usePolarisFollowMutation",
+                "doc_id": DOC_FOLLOW,
+                "variables": json.dumps(variables, separators=(",", ":")),
             })
             checar_bloqueio(res["status"], res["text"])   # bloqueio real → para (sem retry)
+            st = res.get("status")
             try:
-                return _parse_json(res["text"])
+                data = _parse_json(res["text"])
             except Exception:
-                st = res.get("status")
                 ult = (st, (res.get("text") or "").strip())
-                if t < tentativas - 1:
-                    log.warning("  ~ follow %s: HTTP %s (transitório) — tentativa %d/%d, "
-                                "recarregando tokens e repetindo", user_id, st, t + 1, tentativas)
-                    self.page.wait_for_timeout(random.randint(3000, 8000))
-                    try:
-                        self.carregar_tokens()           # tokens podem ter rotacionado
-                    except Exception:
-                        pass
-        st, corpo = ult
+                data = None
+
+            if data is not None:
+                fr = ((data.get("data") or {}).get("xdt_create_friendship")) or {}
+                fs = fr.get("friendship_status")
+                if fs:                                   # sucesso → devolve no formato esperado
+                    return {"friendship_status": fs, "status": "ok"}
+                # GraphQL 200 mas sem friendship_status: pode ser bloqueio mascarado em `errors`
+                errs = data.get("errors") or []
+                txt_err = json.dumps(errs, ensure_ascii=False).lower()
+                if any(k in txt_err for k in ("feedback_required", "checkpoint",
+                                              "challenge", "spam", "blocked", "rate_limit")):
+                    raise BloqueioDetectado(f"follow recusado pelo IG (GraphQL errors): {str(errs)[:200]}")
+                ult = (st, json.dumps(data, ensure_ascii=False)[:200])
+
+            if t < tentativas - 1:
+                log.warning("  ~ follow %s: HTTP %s sem friendship_status (transitório) — "
+                            "tentativa %d/%d, recarregando tokens e repetindo",
+                            user_id, st, t + 1, tentativas)
+                self.page.wait_for_timeout(random.randint(3000, 8000))
+                try:
+                    self.carregar_tokens()               # tokens podem ter rotacionado
+                except Exception:
+                    pass
+        st, corpo = ult if ult else (None, "")
         detalhe = f'corpo: "{corpo[:120]}"' if corpo else "corpo vazio"
         raise ErroTransitorio(f"HTTP {st} ({explicar_status(st)}) após {tentativas} tentativas — {detalhe}")
 
