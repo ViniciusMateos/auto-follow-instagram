@@ -25,6 +25,7 @@ Modular (modos e chats):
 import argparse
 import os
 import sys
+import time
 import traceback
 from datetime import datetime
 
@@ -35,6 +36,21 @@ from safety import ErroTransitorio
 from ig import IG, extrair_post, tem_reacao
 
 LOGS_ERRO_DIR = os.path.join(config.OUTPUT_DIR, "logs")
+
+_T_INICIO = time.monotonic()
+
+
+def _dur_run():
+    """Tempo total desta execução, formatado (ex: '3m 12s')."""
+    s = int(time.monotonic() - _T_INICIO)
+    h, r = divmod(s, 3600)
+    m, s = divmod(r, 60)
+    return f"{h}h {m}m {s}s" if h else (f"{m}m {s}s" if m else f"{s}s")
+
+
+def progresso(done, total, label=""):
+    """Marcador machine-readable pro backend/app desenharem a barra de progresso."""
+    print(f"[progress] {done} {total} {label}".rstrip(), flush=True)
 
 
 def _carregar_cookies(path):
@@ -79,6 +95,7 @@ def imprimir_saldo(guard, motivo=""):
     log.info("   solicitadas (privadas) .... %d", guard.pendentes)
     log.info("   puladas (já seguia/etc) ... %d", guard.pulados)
     log.info("   total de ações de follow .. %d", guard.seguidos + guard.pendentes)
+    log.info("   tempo de execução ......... %s", _dur_run())
     log.info("─────────────────────────────────────────────────────")
 
 
@@ -269,9 +286,12 @@ def run(dry=False, start_after=None, debug=False, ignorar_janela=False):
             log.info("Próximos a processar: %s",
                      ", ".join(p["code"] for p in candidatos[:8]) + (" …" if len(candidatos) > 8 else ""))
 
+            total = len(candidatos)
+            progresso(0, total, "iniciando")
             for i, p in enumerate(candidatos):
                 processar_post(ig, p, state, guard, dry)
-                if i < len(candidatos) - 1:
+                progresso(i + 1, total, f"@{p.get('autor') or '?'}")
+                if i < total - 1:
                     guard.dormir(config.DELAY_POST, "entre posts")
             log.info("Backlog deste run concluído.")
         except LimiteAtingido as e:
