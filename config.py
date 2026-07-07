@@ -13,7 +13,7 @@ import os
 _BASE = os.path.dirname(os.path.abspath(__file__))
 
 # ─────────────────────────── Alvo ───────────────────────────
-GRUPO_NOME = "vai toma no quase nada"
+GRUPO_NOME = "vaitomanoquasenada"
 THREAD_ID = "24092553240433373"
 THREAD_URL = f"https://www.instagram.com/direct/t/{THREAD_ID}/"
 
@@ -21,6 +21,24 @@ THREAD_URL = f"https://www.instagram.com/direct/t/{THREAD_ID}/"
 # Pasta com o perfil logado do Chrome (cookies/sessão persistem aqui).
 # Na 1ª vez rode `python main.py --login` e faça login manual nessa janela.
 USER_DATA_DIR = os.path.join(_BASE, "browser_profile")   # ancorado na pasta do projeto
+
+
+# ─────────────────────── Proxy (opcional, configurável pelo app) ──────────
+# Grava proxy.json {enabled, server, username, password}. Formato do Playwright.
+def _carregar_proxy():
+    import json
+    f = os.path.join(_BASE, "proxy.json")
+    if os.path.exists(f):
+        try:
+            d = json.load(open(f, encoding="utf-8"))
+            if d.get("enabled") and d.get("server"):
+                return {k: d[k] for k in ("server", "username", "password") if d.get(k)}
+        except Exception:
+            pass
+    return None
+
+
+PROXY = _carregar_proxy()
 HEADLESS = False                       # headed é menos detectável; mude por conta própria
 USAR_CHROME_REAL = True                # usa o Chrome instalado (channel="chrome") em vez do
                                        # Chromium do Playwright — menos detectável, ajuda no login/reCAPTCHA
@@ -50,7 +68,7 @@ MAX_POSTS_POR_RUN = 5         # (só vale com APLICAR_CAPS=True) posts por execu
 # 0 = sem limite (vai até o IG bloquear). Vale INDEPENDENTE de APLICAR_CAPS.
 LIMITE_FOLLOWS_RUN = 0
 
-# Espera entre um chat e outro (quando rodar vários em sequência). O toggle liga/desliga.
+# Reservado (ainda NÃO lido no fluxo atual): espera entre execuções em sequência.
 USAR_DELAY_ENTRE_CHATS = True
 DELAY_ENTRE_CHATS = (120, 300)
 
@@ -87,8 +105,8 @@ TENTATIVAS_POR_FOLLOW = 3
 MAX_FALHAS_SEGUIDAS = 10
 
 # Quantas páginas de mensagens varrer (20 msgs/página, newest→oldest).
-# Os posts já feitos (com ❤️) ficam BEM no fundo — a paginação sobe até achar
-# o seu primeiro coração (o "boundary") e para. Este é só o teto de segurança.
+# Os posts já feitos (com QUALQUER reação) ficam BEM no fundo — a paginação sobe até
+# achar o primeiro post já reagido (o "boundary") e para. Este é só o teto de segurança.
 MAX_PAGINAS_MENSAGENS = 14
 
 # ─────────────────────────── Paths ──────────────────────────

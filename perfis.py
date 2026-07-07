@@ -129,7 +129,9 @@ def salvar_perfil(nome, valores):
 
 # ───────────────────────────── chats ─────────────────────────────
 def _default_chats():
-    return [{"nome": "vai toma no quase nada", "thread_id": "24092553240433373"}]
+    # começa vazio de propósito: na 1ª vez o usuário configura o chat (nome + thread_id
+    # ou @usuário) pelo app — nada de grupo "chumbado" que ele nunca escolheu.
+    return []
 
 
 def carregar_chats():

@@ -139,6 +139,9 @@ class IG:
             # (ajuda o reCAPTCHA do login a funcionar)
             ignore_default_args=["--enable-automation"],
         )
+        if getattr(config, "PROXY", None):
+            kwargs["proxy"] = config.PROXY
+            log.info("🌐 Proxy ativo: %s", config.PROXY.get("server"))
         if getattr(config, "USAR_CHROME_REAL", False):
             kwargs["channel"] = "chrome"     # usa o Chrome instalado (menos detectável)
         try:
@@ -261,7 +264,7 @@ class IG:
         return nodes
 
     def get_likers(self, media_id):
-        """Lista de usuários que curtiram (paginando se houver next_max_id)."""
+        """Lista de usuários que curtiram (uma página; o endpoint /likers/ já devolve o conjunto)."""
         users = []
         url = f"https://www.instagram.com/api/v1/media/{media_id}/likers/"
         res = self.page.evaluate(JS_API_GET, {**self._base(), "url": url})

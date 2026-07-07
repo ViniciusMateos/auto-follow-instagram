@@ -12,6 +12,9 @@ output/
 perfis.json
 chats.json
 
+# proxy (credenciais — NUNCA commitar)
+proxy.json
+
 # python
 __pycache__/
 *.pyc
