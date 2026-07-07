@@ -1,10 +1,10 @@
 """
 Captura a requisição REAL de follow que o instagram.com dispara ao clicar "Seguir".
 
-Por quê: o bot manda `POST /api/v1/friendships/create/{id}/` (REST legado, da captura
-Fiddler antiga) e o IG responde com o shell HTML (redirect) em vez do JSON. O site
-moderno segue por OUTRO caminho (provável mutation GraphQL). Esta ferramenta grava
-exatamente o que o navegador faz — pra replicarmos byte a byte no `ig.py`.
+Por quê (histórico, já resolvido): descobriu-se aqui que o follow do web moderno vai
+por uma mutation GraphQL — hoje implementada em `ig.py` (usePolarisFollowMutation),
+não mais pelo `POST /api/v1/friendships/create/` (REST legado, que devolvia shell HTML).
+Mantida pra recapturar caso o IG mude o doc_id/payload.
 
 Uso:
   python diag_capturar_follow.py <username>
