@@ -118,6 +118,17 @@ def pk_to_code(pk) -> str:
     return s
 
 
+def _fetch_transitorio(msg) -> bool:
+    """True se o erro do page.evaluate é uma FALHA DE REDE naquele fetch (recuperável:
+    pula o follow e segue). NÃO inclui browser fechado/crash (aí a run não continua)."""
+    m = (msg or "").lower()
+    if any(k in m for k in ("closed", "crash", "target page", "detached", "has been closed")):
+        return False
+    return any(k in m for k in (
+        "failed to fetch", "networkerror", "load failed", "net::err",
+        "err_network", "err_internet", "err_connection", "err_timed_out", "err_name_not_resolved"))
+
+
 class IG:
     def __init__(self, dry_run=False):
         self.dry_run = dry_run
@@ -295,14 +306,31 @@ class IG:
                 "container_module": "profile",
                 "nav_chain": "",
             }
-            res = self.page.evaluate(JS_GRAPHQL, {
-                **self._base(), "av": self.tokens.get("av"),
-                "dtsg": self.tokens.get("dtsg"), "lsd": self.tokens.get("lsd"),
-                "jazoest": self.tokens.get("jazoest"),
-                "friendly": "usePolarisFollowMutation",
-                "doc_id": DOC_FOLLOW,
-                "variables": json.dumps(variables, separators=(",", ":")),
-            })
+            try:
+                res = self.page.evaluate(JS_GRAPHQL, {
+                    **self._base(), "av": self.tokens.get("av"),
+                    "dtsg": self.tokens.get("dtsg"), "lsd": self.tokens.get("lsd"),
+                    "jazoest": self.tokens.get("jazoest"),
+                    "friendly": "usePolarisFollowMutation",
+                    "doc_id": DOC_FOLLOW,
+                    "variables": json.dumps(variables, separators=(",", ":")),
+                })
+            except Exception as e:
+                # 'Failed to fetch' & afins de REDE → transitório: pula esse follow e segue.
+                # Browser fechado/crash → propaga (não dá pra continuar a run).
+                if not _fetch_transitorio(str(e)):
+                    raise
+                ult = (None, str(e)[:120])
+                if t < tentativas - 1:
+                    log.warning("  ~ follow %s: rede falhou no fetch (%s) — tentativa %d/%d",
+                                user_id, str(e).split(":")[-1].strip()[:50], t + 1, tentativas)
+                    self.page.wait_for_timeout(random.randint(3000, 8000))
+                    try:
+                        self.carregar_tokens()
+                    except Exception:
+                        pass
+                    continue
+                break                                     # esgotou → ErroTransitorio lá embaixo
             checar_bloqueio(res["status"], res["text"])   # bloqueio real → para (sem retry)
             st = res.get("status")
             try:
