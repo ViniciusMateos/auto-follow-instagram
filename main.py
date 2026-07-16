@@ -97,6 +97,9 @@ def imprimir_saldo(guard, motivo=""):
     log.info("   total de ações de follow .. %d", guard.seguidos + guard.pendentes)
     log.info("   tempo de execução ......... %s", _dur_run())
     log.info("─────────────────────────────────────────────────────")
+    # marcador machine-readable pro histórico (vai pro stdout E pro run.log)
+    log.info("[saldo] seguidos=%d pedidos=%d pulados=%d",
+             guard.seguidos, guard.pendentes, guard.pulados)
 
 
 def tratar_erro(exc, titulo):
