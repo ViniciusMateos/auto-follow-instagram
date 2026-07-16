@@ -287,6 +287,38 @@ class IG:
         users.extend(data.get("users", []))
         return users
 
+    def resolver_thread(self, alvo):
+        """Acha o thread_id de um chat pelo NOME do grupo (ou @usuário) varrendo o inbox.
+        Devolve o thread_id (str) ou None se não achar. Usado quando o chat foi salvo só
+        pelo nome (sem thread_id)."""
+        alvo_l = str(alvo).strip().lstrip("@").lower()
+        if not alvo_l:
+            return None
+        url = ("https://www.instagram.com/api/v1/direct_v2/inbox/"
+               "?visual_message_return_type=unseen&thread_message_limit=1"
+               "&persistentBadging=true&limit=50")
+        res = self.page.evaluate(JS_API_GET, {**self._base(), "url": url})
+        checar_bloqueio(res["status"], res["text"])
+        if res["status"] != 200:
+            log.warning("inbox HTTP %s ao resolver '%s'", res["status"], alvo)
+            return None
+        threads = (_parse_json(res["text"]).get("inbox") or {}).get("threads") or []
+
+        def titulo(t):
+            return (t.get("thread_title") or "").strip().lower()
+
+        for t in threads:                              # 1) título exato
+            if titulo(t) == alvo_l:
+                return str(t.get("thread_id"))
+        for t in threads:                              # 2) título contém
+            if alvo_l in titulo(t):
+                return str(t.get("thread_id"))
+        for t in threads:                              # 3) @usuário de uma DM 1:1
+            for u in (t.get("users") or []):
+                if (u.get("username") or "").lower() == alvo_l:
+                    return str(t.get("thread_id"))
+        return None
+
     def seguir(self, user_id, tentativas=None):
         """Executa o follow via mutation GraphQL `usePolarisFollowMutation` (o caminho
         REAL do instagram.com web — capturado do clique manual; ver API_REFERENCE.md).

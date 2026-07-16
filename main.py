@@ -261,11 +261,26 @@ def run(dry=False, start_after=None, debug=False, ignorar_janela=False):
 
     log.info("Abrindo Instagram (%s)…", "DRY-RUN" if dry else "AÇÃO REAL")
     with IG(dry_run=dry) as ig:
-        ig.ir(config.THREAD_URL)
+        ig.ir(config.THREAD_URL or "https://www.instagram.com/direct/inbox/")
         if not ig.logado():
             log.error("Sem sessão logada. Rode `python main.py --login` primeiro.")
             return
         ig.carregar_tokens()
+
+        # chat salvo só pelo nome (sem thread_id) → acha o grupo no inbox e resolve
+        if not getattr(config, "THREAD_ID", ""):
+            log.info("Procurando o grupo '%s' na sua caixa de DMs…", config.GRUPO_NOME)
+            tid = ig.resolver_thread(config.GRUPO_NOME)
+            if not tid:
+                log.error("Não achei '%s' no seu inbox. Confira o nome exato do grupo "
+                          "ou cadastre pelo thread_id.", config.GRUPO_NOME)
+                return
+            config.THREAD_ID = tid
+            config.THREAD_URL = f"https://www.instagram.com/direct/t/{tid}/"
+            log.info("✓ '%s' → thread_id %s", config.GRUPO_NOME, tid)
+            perfis.cachear_thread(config.GRUPO_NOME, tid)   # próximo run não precisa procurar
+            ig.ir(config.THREAD_URL)
+            guard.dormir(config.DELAY_ACAO_UI, "abrindo o grupo")
 
         try:
             nodes = ig.ler_mensagens(debug_dump=debug, parar_na_reacao=True)

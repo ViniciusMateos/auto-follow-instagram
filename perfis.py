@@ -173,13 +173,27 @@ def add_chat(nome, thread_id):
     return novo
 
 
+def cachear_thread(nome, thread_id):
+    """Salva o thread_id resolvido de volta no chat (salvo só pelo nome), pro próximo
+    run não precisar procurar no inbox de novo."""
+    chats = carregar_chats()
+    mudou = False
+    for c in chats:
+        if c.get("nome", "").strip().lower() == str(nome).strip().lower() and not c.get("thread_id"):
+            c["thread_id"] = str(thread_id)
+            mudou = True
+    if mudou:
+        salvar_chats(chats)
+
+
 # ─────────────────────── aplicar no runtime ───────────────────────
 def aplicar(config, perfil, chat=None):
     """Sobrescreve os atributos do módulo `config` com os valores do perfil + chat.
     Como o resto do código lê `config.X`, isso aplica o modo/chat sem tocar em nada mais."""
     if chat:
-        config.THREAD_ID = str(chat["thread_id"])
-        config.THREAD_URL = f"https://www.instagram.com/direct/t/{chat['thread_id']}/"
+        tid = str(chat.get("thread_id") or "")
+        config.THREAD_ID = tid
+        config.THREAD_URL = f"https://www.instagram.com/direct/t/{tid}/" if tid else ""
         config.GRUPO_NOME = chat.get("nome", config.GRUPO_NOME)
     for campo, attr in _MAP_CONFIG.items():
         if campo in perfil:
