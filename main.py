@@ -112,7 +112,7 @@ def tratar_erro(exc, titulo):
             f.write("".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
     except Exception:
         caminho = "(não consegui salvar o arquivo de erro)"
-    log.error("⛔ %s: %s", titulo, str(exc)[:160])
+    log.error("%s: %s", titulo, str(exc)[:160])
     log.error("   detalhes completos em: %s", caminho)
 
 

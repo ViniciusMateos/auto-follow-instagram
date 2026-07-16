@@ -39,9 +39,17 @@ def _carregar_proxy():
 
 
 PROXY = _carregar_proxy()
-HEADLESS = False                       # headed é menos detectável; mude por conta própria
-USAR_CHROME_REAL = True                # usa o Chrome instalado (channel="chrome") em vez do
-                                       # Chromium do Playwright — menos detectável, ajuda no login/reCAPTCHA
+
+
+def _envbool(nome, padrao):
+    v = os.environ.get(nome)
+    return padrao if v is None else v.strip().lower() in ("1", "true", "yes", "on")
+
+
+# Default = PC (headed + Chrome real, menos detectável). No SERVIDOR headless (sem
+# display), rode com IG_HEADLESS=1 e IG_CHROME_REAL=0 no ambiente (systemd .env).
+HEADLESS = _envbool("IG_HEADLESS", False)            # headed é menos detectável (PC)
+USAR_CHROME_REAL = _envbool("IG_CHROME_REAL", True)  # Chrome instalado (channel="chrome")
 LOCALE = "pt-BR"
 # Use o MESMO User-Agent do seu Chrome real (o da captura):
 USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
