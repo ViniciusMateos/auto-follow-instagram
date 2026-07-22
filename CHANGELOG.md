@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.1.0] — 2026-07-22
+
+### Adicionado
+- feat: leitura da thread por **paginação direta** (`IGDMessageListOffMsysQuery`) — mata o rate-limit `1357005`; o scroll vira fallback
+- feat: **sessão universal** do Instagram — uma pra todos os bots, no dir pai comum (ninguém importa num bot e copia pros outros)
+- feat: **log isolado por run** (`output/logs/run_<timestamp>.log`, mantém os 30 mais recentes)
+- feat: captura do `x-ig-set-www-claim` real nos likers — devolve muito mais curtidores (antes mandava "0")
+
+### Modificado
+- update: **navegação não-fatal** — o `goto`/dwell que engasgava no túnel não derruba mais a run (segue e reage mesmo assim)
+- update: **self-heal do `doc_id`** da paginação — se o id defasar, redescobre sozinho
+- update: timeouts (`AbortController`) nas chamadas fetch — não trava mais em rede lenta
+- update: janela de horário **desligada por padrão** (`USAR_JANELA=False`); roda a qualquer hora
+
+### Documentação
+- docs: renomeia identidade auto-like → auto-follow; README com logs por run e `USAR_JANELA`
+
 ## [1.0.4] — 2026-06-29
 
 ### Corrigido
