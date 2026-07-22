@@ -1,4 +1,4 @@
-# Referência de API — fluxo "auto-like / follow" no chat do Instagram
+# Referência de API — fluxo "auto-follow / follow" no chat do Instagram
 
 > Extraído de uma captura Fiddler (`quaseseguenada.saz`, 573 sessões) do fluxo real
 > executado manualmente no `instagram.com` (web). Use como fonte da verdade do que

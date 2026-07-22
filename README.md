@@ -1,4 +1,4 @@
-# auto-like-instagram
+# auto-follow-instagram
 
 > ⚠️ **Risco de bloqueio/ban.** Seguir em massa é a ação mais vigiada do Instagram.
 > Isto viola os Termos de Uso e pode custar a conta. Comece conservador, rode
@@ -17,7 +17,7 @@ foram extraídos de uma captura Fiddler real — ver [`API_REFERENCE.md`](API_RE
 ## Setup
 
 ```bash
-cd projetos/auto-like-instagram
+cd projetos/auto-follow-instagram
 python -m venv .venv && .venv\Scripts\activate     # opcional
 pip install -r requirements.txt
 python -m playwright install chromium
@@ -85,7 +85,8 @@ Todos os limites e delays ficam lá:
 | `DELAY_FOLLOW` | 0–5 s | pausa aleatória entre follows |
 | `DELAY_POST` | 3–8 min | pausa entre posts |
 | `PAUSA_LONGA` | 5–15 s | respiro a cada 12 follows |
-| `ACTIVE_HOURS` | 9–23 | só roda em horário "humano" (só com `APLICAR_CAPS=True`) |
+| `USAR_JANELA` | False | False = roda a qualquer hora; True = limita ao `ACTIVE_HOURS` |
+| `ACTIVE_HOURS` | 9–23 | horário "humano" (só vale com `USAR_JANELA=True`) |
 | `SEGUIR_PRIVADOS` | True | segue privados também (vira pedido pendente) |
 
 > Sem cap por post: segue **todos** os curtidores de cada post. Públicas viram
@@ -94,7 +95,8 @@ Todos os limites e delays ficam lá:
 
 ## Saídas — `output/`
 - `state.json` — usuários já seguidos, posts feitos, eventos de follow (caps).
-- `run.log` — log de cada ação.
+- `run.log` — log acumulado de todas as ações.
+- `logs/run_<timestamp>.log` — log **daquele run isolado** (mantém só os 30 mais recentes) — pra abrir depois e ver exatamente o que rolou.
 - `logs/erro_<data>.log` — traceback completo quando dá erro/bloqueio (console mostra só o resumido).
 - `logs/diag_<data>.png` — **screenshot** do navegador no momento da parada (pra você ver se é login/checkpoint ou feed normal).
 - `debug_messages.json` — só com `--debug`.

@@ -1,4 +1,4 @@
-# Prompt para o Claude Code (colar dentro da pasta `auto-like-instagram`)
+# Prompt para o Claude Code (colar dentro da pasta `auto-follow-instagram`)
 
 ---
 
