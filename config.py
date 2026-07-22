@@ -1,5 +1,5 @@
 """
-Configuração do auto-like-instagram.
+Configuração do auto-follow-instagram.
 
 Tudo que controla comportamento e SEGURANÇA fica aqui. Os valores padrão são
 conservadores de propósito — suba devagar, ao longo de dias, se nada bloquear.
@@ -20,6 +20,15 @@ THREAD_URL = f"https://www.instagram.com/direct/t/{THREAD_ID}/"
 # ─────────────────────── Sessão / navegador ─────────────────
 # Pasta com o perfil logado do Chrome (cookies/sessão persistem aqui).
 # Na 1ª vez rode `python main.py --login` e faça login manual nessa janela.
+# Sessão do IG (cookies). Fica FORA do browser_profile de propósito: o Chromium
+# deste server não persiste cookie nenhum em disco (testado — nem os que o próprio
+# site seta sobrevivem a fechar/reabrir). Então a sessão vive aqui e é reinjetada a
+# cada abertura; o perfil serve só pra cache/fingerprint.
+# Sessão UNIVERSAL: UMA pra todos os bots (é a mesma conta de IG). Fica no dir pai comum
+# (quase_nada_bots/), não no dir do worker — assim TODOS os bots leem a MESMA sessão, sem
+# ninguém "importar num bot e copiar pros outros". Override por IG_SESSION_FILE.
+SESSION_FILE = os.environ.get("IG_SESSION_FILE") or os.path.join(
+    os.path.dirname(os.path.dirname(_BASE)), "session_cookies.json")
 USER_DATA_DIR = os.path.join(_BASE, "browser_profile")   # ancorado na pasta do projeto
 
 
@@ -89,7 +98,10 @@ PAUSA_LONGA = (5, 15)         # duração da pausa longa (reduzida p/ modo rápi
 #  -> p/ DESLIGAR de vez a pausa longa: PAUSA_LONGA_CADA = 999999
 
 # Janela de horário "humano" (hora local 0–23). Fora disso, não roda.
-ACTIVE_HOURS = (9, 23)
+# Janela de horário: DESLIGADA por padrão — roda a QUALQUER hora. Ligue USAR_JANELA=True
+# pra limitar ao ACTIVE_HOURS abaixo. Vinicius pediu sem janela.
+USAR_JANELA = False
+ACTIVE_HOURS = (9, 23)   # só vale se USAR_JANELA=True
 
 # Quem pular
 PULAR_JA_SEGUIDOS = True      # friendship_status.following == True
@@ -112,12 +124,32 @@ COOLDOWN_BLOQUEIO_HORAS = 36
 TENTATIVAS_POR_FOLLOW = 3
 MAX_FALHAS_SEGUIDAS = 10
 
-# Quantas páginas de mensagens varrer (20 msgs/página, newest→oldest).
-# Os posts já feitos (com QUALQUER reação) ficam BEM no fundo — a paginação sobe até
-# achar o primeiro post já reagido (o "boundary") e para. Este é só o teto de segurança.
-MAX_PAGINAS_MENSAGENS = 14
+# ───────────────── Leitura da thread ─────────────────
+# OFICIAL agora = PAGINAÇÃO DIRETA (ig.ler_mensagens): POST /api/graphql com
+# IGDMessageListOffMsysQuery, cursor a cursor, ~2s entre páginas. É o que o PRÓPRIO
+# navegador faz (comprovado na captura insta dm.saz de 17/jul: 14 páginas seguidas, zero
+# rate limit). O 1357005 que "estrangulava" NÃO era burst — o ritmo já era 1,5-3,5s. Era
+# o doc_id DEFASADO (ver DOC_MESSAGE_LIST em ig.py). Com o id certo, paginar direto é
+# estável e sem a fragilidade do scroll.
+#
+# Quantas páginas de mensagens varrer (20 msgs/página, newest→oldest). A paginação sobe
+# até achar uma página INTEIRA já reagida (= bloco processado) e para. Este é só o teto de
+# segurança: precisa ser grande o bastante pra alcançar a fronteira quando o backlog cresce
+# (já chegou a 165+ posts → ~9 páginas).
+MAX_PAGINAS_MENSAGENS = 40
+
+# ── Reserva: leitura por SCROLL (ig.ler_mensagens_scroll) ──
+# Sobe a thread como humano e colhe as respostas graphql que a própria página dispara.
+# Não é mais o caminho padrão (tem fragilidade: navegação prévia quebra o carregador, e o
+# backlog travava em ~17). Fica como fallback. Mesmo truque que o brecho-tracker usa no feed.
+THREAD_MONTAGEM_MS = 12000       # a thread do DM leva ~10s pra sair do esqueleto
+SCROLL_MAX = 60                  # teto de scrolls (segurança; para antes no "estável")
+SCROLL_ESTAVEL_MAX = 12          # tentativas empurrando o topo antes de aceitar que acabou
+SCROLL_PAUSA_MS = (2000, 3000)   # pausa entre scrolls (o IG carrega quando você INSISTE)
+SCROLL_BLOCO_MIN = 6             # posts reagidos seguidos p/ declarar "cheguei no bloco"
 
 # ─────────────────────────── Paths ──────────────────────────
 OUTPUT_DIR = os.path.join(_BASE, "output")
 STATE_FILE = os.path.join(OUTPUT_DIR, "state.json")
 LOG_FILE = os.path.join(OUTPUT_DIR, "run.log")
+

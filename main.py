@@ -1,5 +1,5 @@
 """
-auto-like-instagram — orquestrador.
+auto-follow-instagram — orquestrador.
 
 Fluxo (igual ao manual):
   1. abre a DM "vai toma no quase nada"
@@ -80,11 +80,16 @@ def modo_importar_cookies(path):
     cookies = _carregar_cookies(path)
     log.info("Importando %d cookies de %s…", len(cookies), path)
     with IG() as ig:
-        if ig.importar_cookies(cookies):
-            log.info("✓ Sessão logada! Pode rodar `python main.py --dry-run`.")
-        else:
-            log.warning("Importou, mas não achei sessionid. Confira se exportou os cookies "
-                        "do instagram.com COM a conta logada (precisa do sessionid).")
+        ok = ig.importar_cookies(cookies)
+    if ok:
+        log.info("Sessão logada! Pode rodar `python main.py --dry-run`.")
+        return
+    # Sair != 0 aqui é obrigatório: quem chama é o app ("Conectar Instagram"), e ele decide
+    # pelo código de saída se avisa "conectado" ou "deu ruim". Saindo 0 numa falha, o app
+    # anunciava sessão conectada com o login inválido.
+    log.error("Importei os cookies mas a sessão NÃO está logada. Exporte de novo com a "
+              "conta logada no instagram.com (precisa de um sessionid válido).")
+    sys.exit(1)
 
 
 def imprimir_saldo(guard, motivo=""):
@@ -157,16 +162,28 @@ def escolher_candidatos(posts, start_after=None):
             return []
         return [p for p in posts[idxs[0] + 1:] if not p["processed"]]
 
-    ult_proc = max((i for i, p in enumerate(posts) if p["processed"]), default=None)
-    if ult_proc is None:
+    if not any(p["processed"] for p in posts):
         if config.START_FROM_OLDEST_SE_VAZIO:
             log.info("Nenhum post marcado ainda; começando do mais antigo.")
             return [p for p in posts if not p["processed"]]
-        log.warning("Nenhum post com ❤️ encontrado e START_FROM_OLDEST_SE_VAZIO=False. "
+        log.warning("Nenhum post reagido encontrado e START_FROM_OLDEST_SE_VAZIO=False. "
                     "Para iniciar, rode com --start-after <CODE> do último que você já fez "
                     "manualmente (ou ligue a flag no config).")
         return []
-    return [p for p in posts[ult_proc + 1:] if not p["processed"]]
+
+    # A fronteira é o FIM DO BLOCO CONTÍGUO de processados (a lista vem antigo→novo e o bot
+    # marca em ordem, então os feitos formam um bloco no começo).
+    #
+    # Pegar o ÚLTIMO processado (max) estava ERRADO: uma única reação solta lá na frente —
+    # alguém do grupo reagindo fora de ordem — jogava a fronteira pra lá e os posts do meio
+    # eram pulados pra sempre. Foi o que houve: um ❤ num post recente escondeu 165 posts.
+    fronteira = 0
+    while fronteira < len(posts) and posts[fronteira]["processed"]:
+        fronteira += 1
+    if fronteira:
+        log.info("Fronteira: último processado em sequência é %s (@%s).",
+                 posts[fronteira - 1]["code"], posts[fronteira - 1].get("autor") or "?")
+    return [p for p in posts[fronteira:] if not p["processed"]]
 
 
 def deve_pular_liker(u, state):
@@ -183,16 +200,24 @@ def deve_pular_liker(u, state):
     return None
 
 
-def processar_post(ig, p, state, guard, dry):
-    ig.ir(f"https://www.instagram.com/p/{p['code']}/")          # abre o post (humano)
-    guard.dormir(config.DELAY_ACAO_UI, "abrindo post")
+def processar_post(ig, p, state, guard, dry, idx=0, total_posts=0):
+    ig.visitar_post(p["code"])          # abre o post (dwell humano) — NÃO-FATAL: se o túnel
+    guard.dormir(config.DELAY_ACAO_UI, "abrindo post")   # engasgar, segue pros curtidores
 
     likers = ig.get_likers(p["media_id"])
-    log.info("┌─ POST de @%s  (%s) — %d curtidores", p.get("autor") or "?",
-             p["code"], len(likers))
+    autor = p.get("autor") or "?"
+    log.info("┌─ POST de @%s  (%s) — %d curtidores", autor, p["code"], len(likers))
+
+    # A barra mede os CURTIDORES deste post (anda de verdade: ~32 passos), e o rótulo
+    # carrega o todo ("post 3/187"). Medir por post deixava a barra andando 0,5% de cada
+    # vez, a cada vários minutos — parecia travada.
+    ctx = f"post {idx + 1}/{total_posts} · @{autor}" if total_posts else f"@{autor}"
 
     seguidos = pendentes = pulados = 0
-    for u in likers:                              # segue TODOS os curtidores
+    for n, u in enumerate(likers):                # segue TODOS os curtidores
+        # emitido no TOPO: o corpo do loop tem vários `continue` (pulado, dry, falha…),
+        # então no fim não passaria em todos os caminhos
+        progresso(n, len(likers), ctx)
         uid = u.get("pk") or u.get("pk_id") or u.get("id")
         uname = u.get("username", "?")
         motivo = deve_pular_liker(u, state)
@@ -238,13 +263,27 @@ def processar_post(ig, p, state, guard, dry):
         else:
             log.warning("│    ! follow @%s sem confirmação: %s", uname, str(resp)[:140])
 
-    # marca o post como feito: reação no chat + estado local
+    # fecha a barra deste post em 100% antes de ir pro próximo (o loop emite no topo,
+    # então sem isso ela pararia no penúltimo curtidor)
+    progresso(len(likers), len(likers), ctx)
+
+    # marca o post como feito: reação no chat + estado local.
+    # NAVEGAÇÃO IGUAL AO RUN REAL, inclusive no dry: volta pra thread (mesmo goto/dwell).
+    # A ÚNICA coisa que o dry NÃO faz é a MUTAÇÃO (reagir) e gravar estado — o caminho de
+    # navegação/requisição é idêntico, pra o dry ser um teste fiel do run de verdade.
+    # Volta pra thread (dwell humano). NÃO-FATAL: a reação é um fetch graphql (não precisa
+    # estar NA página da thread), então se o túnel engasgar nesse goto a gente segue e reage
+    # mesmo assim — era esse goto que derrubava o run DEPOIS de já ter seguido os 99 curtidores.
+    try:
+        ig.ir(config.THREAD_URL)
+    except Exception as e:
+        log.warning("  ~ não voltei pra thread a tempo (%s) — reajo mesmo assim",
+                    str(e).splitlines()[0][:55])
+    guard.dormir(config.DELAY_ACAO_UI, "voltando à thread")
     if dry:
-        log.info("└─ [dry] reagiria — agiria em %d, pulou %d (de @%s)",
+        log.info("└─ [dry] reagiria/marcaria — agiria em %d, pulou %d (de @%s)",
                  seguidos + pendentes, pulados, p.get("autor") or "?")
     else:
-        ig.ir(config.THREAD_URL)
-        guard.dormir(config.DELAY_ACAO_UI, "voltando à thread")
         ig.reagir_coracao(p["message_id"])
         state.marcar_post(p["code"], p["message_id"])
         log.info("└─ post de @%s marcado [reagido] — seguiu %d, pedidos %d (priv), pulou %d",
@@ -264,12 +303,6 @@ def run(dry=False, start_after=None, debug=False, ignorar_janela=False):
 
     log.info("Abrindo Instagram (%s)…", "DRY-RUN" if dry else "AÇÃO REAL")
     with IG(dry_run=dry) as ig:
-        ig.ir(config.THREAD_URL or "https://www.instagram.com/direct/inbox/")
-        if not ig.logado():
-            log.error("Sem sessão logada. Rode `python main.py --login` primeiro.")
-            return
-        ig.carregar_tokens()
-
         # chat salvo só pelo nome (sem thread_id) → acha o grupo no inbox e resolve
         if not getattr(config, "THREAD_ID", ""):
             log.info("Procurando o grupo '%s' na sua caixa de DMs…", config.GRUPO_NOME)
@@ -282,11 +315,19 @@ def run(dry=False, start_after=None, debug=False, ignorar_janela=False):
             config.THREAD_URL = f"https://www.instagram.com/direct/t/{tid}/"
             log.info("✓ '%s' → thread_id %s", config.GRUPO_NOME, tid)
             perfis.cachear_thread(config.GRUPO_NOME, tid)   # próximo run não precisa procurar
-            ig.ir(config.THREAD_URL)
-            guard.dormir(config.DELAY_ACAO_UI, "abrindo o grupo")
 
         try:
-            nodes = ig.ler_mensagens(debug_dump=debug, parar_na_reacao=True)
+            # PAGINAÇÃO DIRETA (não scroll). A captura real (insta dm.saz, 17/jul) provou
+            # que o próprio navegador pagina a thread com IGDMessageListOffMsysQuery, cursor
+            # a cursor, ~2s entre páginas, 14 páginas seguidas SEM rate limit. O que derrubava
+            # a versão na mão NÃO era "burst" (o ritmo já era 1,5-3,5s) — era o doc_id velho.
+            # Com o doc_id certo (auto-curado se rotacionar), paginar direto é literalmente o
+            # que o site faz, sem a fragilidade do scroll (navegação quebrando o carregador,
+            # backlog travado em ~17). O ler_mensagens_scroll fica de reserva.
+            if not ig.preparar_thread():
+                log.error("Sem sessão logada ao abrir a thread. Reimporte os cookies.")
+                return
+            nodes = ig.ler_mensagens(parar_na_reacao=True)
             log.info("%d mensagens varridas.", len(nodes))
             posts = montar_lista_posts(nodes, state)
             feitos = [p["code"] for p in posts if p["processed"]]
@@ -305,10 +346,9 @@ def run(dry=False, start_after=None, debug=False, ignorar_janela=False):
                      ", ".join(p["code"] for p in candidatos[:8]) + (" …" if len(candidatos) > 8 else ""))
 
             total = len(candidatos)
-            progresso(0, total, "iniciando")
+            progresso(0, 0, f"começando — {total} posts no backlog")
             for i, p in enumerate(candidatos):
-                processar_post(ig, p, state, guard, dry)
-                progresso(i + 1, total, f"@{p.get('autor') or '?'}")
+                processar_post(ig, p, state, guard, dry, i, total)
                 if i < total - 1:
                     guard.dormir(config.DELAY_POST, "entre posts")
             log.info("Backlog deste run concluído.")
@@ -329,7 +369,7 @@ def run(dry=False, start_after=None, debug=False, ignorar_janela=False):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="auto-like-instagram")
+    ap = argparse.ArgumentParser(description="auto-follow-instagram")
     ap.add_argument("--login", action="store_true", help="login manual (1ª vez)")
     ap.add_argument("--import-cookies", metavar="FILE", help="importa cookies (JSON do Cookie-Editor) e pula o login")
     ap.add_argument("--dry-run", action="store_true", help="simula sem agir")

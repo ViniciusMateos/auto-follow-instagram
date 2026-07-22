@@ -23,7 +23,7 @@ def setup_logger():
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
-    logger = logging.getLogger("autolike")
+    logger = logging.getLogger("autofollow")
     logger.setLevel(logging.INFO)
     if logger.handlers:
         return logger
@@ -33,7 +33,23 @@ def setup_logger():
     fh.setFormatter(fmt)
     ch = logging.StreamHandler(sys.stdout)   # stdout (não stderr) p/ não virar "erro" no PowerShell
     ch.setFormatter(fmt)
+    # LOG POR SESSÃO: cada run grava seu PRÓPRIO arquivo em output/logs/run_<timestamp>.log,
+    # pra você abrir DEPOIS e ver exatamente o que rolou naquele run (o run.log acumula TODOS
+    # os runs e vira uma sopa ilegível). Mantém só os 30 mais recentes pra não encher o disco.
+    _logs_dir = os.path.join(config.OUTPUT_DIR, "logs")
+    os.makedirs(_logs_dir, exist_ok=True)
+    _sess = logging.FileHandler(
+        os.path.join(_logs_dir, "run_" + time.strftime("%Y%m%d_%H%M%S") + ".log"), encoding="utf-8")
+    _sess.setFormatter(fmt)
+    try:
+        _antigos = sorted(f for f in os.listdir(_logs_dir)
+                          if f.startswith("run_") and f.endswith(".log"))
+        for _f in _antigos[:-30]:
+            os.remove(os.path.join(_logs_dir, _f))
+    except Exception:
+        pass
     logger.addHandler(fh)
+    logger.addHandler(_sess)
     logger.addHandler(ch)
     return logger
 
@@ -235,7 +251,7 @@ class Guard:
         self.falhas_seguidas = 0     # erros transitórios consecutivos (reseta no sucesso)
 
     def checar_janela(self, ignorar=False):
-        if ignorar or not config.APLICAR_CAPS:
+        if ignorar or not config.APLICAR_CAPS or not getattr(config, "USAR_JANELA", False):
             return
         h = datetime.now().hour
         ini, fim = config.ACTIVE_HOURS

@@ -1,5 +1,5 @@
 """
-Modularização do auto-like: PERFIS (modos) e CHATS salvos.
+Modularização do auto-follow: PERFIS (modos) e CHATS salvos.
 
 - Um PERFIL ("modo") agrupa TODOS os knobs ajustáveis (tempos, caps, limites, quem
   pular). Vem com 3 modos prontos: `padrao` (os valores de hoje), `agressivo`, `calmo`.
