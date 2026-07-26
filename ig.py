@@ -751,7 +751,17 @@ class IG:
         if res["status"] != 200:
             log.warning("likers HTTP %s para media %s", res["status"], media_id)
             return users
-        data = _parse_json(res["text"])
+        # 200 mas CORPO VAZIO = soft-throttle do IG (conta vigiada devolve nada nos likers).
+        # É TRANSITÓRIO: levanta ErroTransitorio pra o processar_post PULAR o post sem marcar
+        # (retoma no próximo run), em vez de estourar json.loads("") e derrubar a run inteira
+        # logo no 1º post — foi o que matou as runs de 23/jul (0 follows).
+        txt = (res.get("text") or "").strip()
+        if not txt:
+            raise ErroTransitorio("likers voltou vazio (HTTP 200 sem corpo — provável soft-throttle)")
+        try:
+            data = _parse_json(txt)
+        except ValueError:
+            raise ErroTransitorio("likers devolveu resposta não-JSON")
         users.extend(data.get("users", []))
         # DIAGNÓSTICO T3: o /likers/ devolve TODOS ou capa? user_count = total real do post.
         # Se total >> devolvidos, o endpoint tá capando e precisa paginar (ou usar o graphql

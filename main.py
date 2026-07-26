@@ -32,7 +32,7 @@ from datetime import datetime
 import config
 import perfis
 from safety import State, Guard, log, BloqueioDetectado, LimiteAtingido
-from safety import ErroTransitorio
+from safety import ErroTransitorio, PaginaTravada
 from ig import IG, extrair_post, tem_reacao
 
 LOGS_ERRO_DIR = os.path.join(config.OUTPUT_DIR, "logs")
@@ -204,7 +204,15 @@ def processar_post(ig, p, state, guard, dry, idx=0, total_posts=0):
     ig.visitar_post(p["code"])          # abre o post (dwell humano) — NÃO-FATAL: se o túnel
     guard.dormir(config.DELAY_ACAO_UI, "abrindo post")   # engasgar, segue pros curtidores
 
-    likers = ig.get_likers(p["media_id"])
+    try:
+        likers = ig.get_likers(p["media_id"])
+    except ErroTransitorio as e:
+        # likers vazio/lixo (soft-throttle) → PULA o post SEM marcar; retoma no próximo run.
+        # Não derruba a run: se for a conta toda bloqueada, os próximos posts também vão pular
+        # e o log mostra isso claramente, mas a run termina limpa em vez de crashar no post 1.
+        log.warning("│ likers indisponível de @%s (%s) — pulando o post sem marcar",
+                    p.get("autor") or "?", e)
+        return 0
     autor = p.get("autor") or "?"
     log.info("┌─ POST de @%s  (%s) — %d curtidores", autor, p["code"], len(likers))
 
@@ -277,8 +285,15 @@ def processar_post(ig, p, state, guard, dry, idx=0, total_posts=0):
     try:
         ig.ir(config.THREAD_URL)
     except Exception as e:
-        log.warning("  ~ não voltei pra thread a tempo (%s) — reajo mesmo assim",
-                    str(e).splitlines()[0][:55])
+        # o goto estourou (túnel/proxy) → a PÁGINA fica quebrada e o page.evaluate seguinte
+        # (reagir) PENDURA pra sempre (o hang de ~13min até o watchdog matar, aparecendo como
+        # "Ctrl+C"). Tenta MAIS UMA vez (blip momentâneo se recupera); se falhar de novo,
+        # PARA LIMPO agora com o saldo — os follows deste post já foram salvos, retoma depois.
+        log.warning("  ~ não voltei pra thread (%s) — 1 tentativa a mais…", str(e).splitlines()[0][:45])
+        try:
+            ig.ir(config.THREAD_URL, timeout=20000)
+        except Exception:
+            raise PaginaTravada("não voltei pra thread (túnel travou) — parando limpo pra não pendurar")
     guard.dormir(config.DELAY_ACAO_UI, "voltando à thread")
     if dry:
         log.info("└─ [dry] reagiria/marcaria — agiria em %d, pulou %d (de @%s)",
@@ -334,7 +349,12 @@ def run(dry=False, start_after=None, debug=False, ignorar_janela=False):
             log.info("%d posts na thread | %d já marcados.", len(posts), len(feitos))
 
             candidatos = escolher_candidatos(posts, start_after=start_after)
-            limite = config.MAX_POSTS_POR_RUN if config.APLICAR_CAPS else len(candidatos)
+            # MAX_POSTS_POR_RUN = 0 significa SEM LIMITE (igual max_follows_dia=0). Antes, com
+            # aplicar_caps=true + max_posts_por_run=0, o limite virava 0 → candidatos[:0] = []
+            # → "nenhum post novo" e NÃO processava NADA (mesmo com 142 candidatos). Trata 0 = ∞.
+            limite = (config.MAX_POSTS_POR_RUN
+                      if (config.APLICAR_CAPS and config.MAX_POSTS_POR_RUN > 0)
+                      else len(candidatos))
             candidatos = candidatos[:limite]
             if not candidatos:
                 log.info("Nenhum post novo para processar.")
@@ -354,6 +374,8 @@ def run(dry=False, start_after=None, debug=False, ignorar_janela=False):
             log.info("Backlog deste run concluído.")
         except LimiteAtingido as e:
             log.info("Parando (cap atingido): %s", e)
+        except PaginaTravada as e:
+            log.warning("Parando limpo: %s", e)   # túnel engasgou — evita o hang, retoma depois
         except BloqueioDetectado as e:
             tratar_erro(e, "BLOQUEIO do Instagram — parando o run")
             try:
@@ -361,7 +383,8 @@ def run(dry=False, start_after=None, debug=False, ignorar_janela=False):
             except Exception:
                 pass
         except KeyboardInterrupt:
-            log.info("Interrompido manualmente (Ctrl+C).")
+            # pode ser você parando no app OU o watchdog matando um run travado (ambos = SIGINT)
+            log.info("Interrompido (parada manual ou watchdog de travamento).")
         except Exception as e:                        # qualquer outro erro: arquivo + resumo
             tratar_erro(e, "erro inesperado — parando o run")
         finally:
