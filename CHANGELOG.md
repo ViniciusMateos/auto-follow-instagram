@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.1] — 2026-07-26
+
+### Adicionado
+- feat: cap de **interações de follow** por run (público + pedido a privado), separado do "follow real" (só público)
+
+### Corrigido
+- fix: resposta **vazia** dos likers (soft-throttle) não derruba mais a run — pula o post e segue
+- fix: **goto travado** (túnel) para a run LIMPO na hora, em vez de pendurar ~13min até o watchdog (o "Ctrl+C" que aparecia sem você parar)
+- fix: caps com **0 = ILIMITADO** (`max_posts_por_run`, `max_follows_dia/hora`, `pausa_longa_cada`) — antes o 0 parava em 0 (o bug do modo que não seguia ninguém)
+
 ## [1.1.0] — 2026-07-22
 
 ### Adicionado
