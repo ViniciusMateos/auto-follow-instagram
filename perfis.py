@@ -24,6 +24,7 @@ PERFIL_PADRAO = {
     "max_follows_hora": 15,
     "max_posts_por_run": 5,
     "limite_follows_run": 0,          # 0 = sem limite (segue até o IG bloquear)
+    "limite_interacoes_run": 0,       # 0 = sem limite (público + pedido privado)
     "delay_follow": [0, 5],           # faixa aleatória (segundos)
     "delay_post": [180, 480],
     "delay_acao_ui": [1.5, 4.0],
@@ -68,7 +69,8 @@ _MODOS_BUILTIN = {
 _MAP_CONFIG = {
     "aplicar_caps": "APLICAR_CAPS", "max_follows_dia": "MAX_FOLLOWS_DIA",
     "max_follows_hora": "MAX_FOLLOWS_HORA", "max_posts_por_run": "MAX_POSTS_POR_RUN",
-    "limite_follows_run": "LIMITE_FOLLOWS_RUN", "delay_follow": "DELAY_FOLLOW",
+    "limite_follows_run": "LIMITE_FOLLOWS_RUN", "limite_interacoes_run": "LIMITE_INTERACOES_RUN",
+    "delay_follow": "DELAY_FOLLOW",
     "delay_post": "DELAY_POST", "delay_acao_ui": "DELAY_ACAO_UI",
     "pausa_longa_cada": "PAUSA_LONGA_CADA", "pausa_longa": "PAUSA_LONGA",
     "usar_delay_entre_chats": "USAR_DELAY_ENTRE_CHATS",

@@ -79,6 +79,11 @@ class ErroTransitorio(Exception):
     """Resposta recuperável (5xx/HTML/vazia) — dá pra tentar de novo, NÃO é bloqueio."""
 
 
+class PaginaTravada(Exception):
+    """A página quebrou (goto estourou pelo túnel) e o page.evaluate seguinte penduraria.
+    Para a run LIMPO na hora (com saldo), em vez de pendurar até o watchdog matar."""
+
+
 # ─────────────────── detecção de bloqueio ───────────────────────
 # Mensagens de bloqueio do IG vêm no campo "message" do JSON de resposta.
 MENSAGENS_BLOQUEIO = {
@@ -270,17 +275,24 @@ class Guard:
         lim = getattr(config, "LIMITE_FOLLOWS_RUN", 0)
         if lim and self.seguidos >= lim:
             raise LimiteAtingido(f"Limite de {lim} follows reais neste run atingido.")
+        # interações = público + pedido a privado (toda ação de follow) — 0 = sem limite
+        lim_int = getattr(config, "LIMITE_INTERACOES_RUN", 0)
+        if lim_int and (self.seguidos + self.pendentes) >= lim_int:
+            raise LimiteAtingido(f"Limite de {lim_int} interações de follow neste run atingido.")
         if not config.APLICAR_CAPS:
             return                       # modo descoberta: sem cap de volume
-        if self.state.follows_ultimo_dia() + self._dry_extra >= config.MAX_FOLLOWS_DIA:
+        # 0 = SEM cap (igual limite_follows_run). Sem o `> 0`, o cap 0 batia ">= 0" e parava
+        # em 0 na hora ("Cap diário atingido (0)") — o toggle desligado vira 0 = ilimitado.
+        if config.MAX_FOLLOWS_DIA and self.state.follows_ultimo_dia() + self._dry_extra >= config.MAX_FOLLOWS_DIA:
             raise LimiteAtingido(f"Cap diário atingido ({config.MAX_FOLLOWS_DIA}).")
-        if self.state.follows_ultima_hora() + self._dry_extra >= config.MAX_FOLLOWS_HORA:
+        if config.MAX_FOLLOWS_HORA and self.state.follows_ultima_hora() + self._dry_extra >= config.MAX_FOLLOWS_HORA:
             raise LimiteAtingido(f"Cap horário atingido ({config.MAX_FOLLOWS_HORA}).")
 
     def pos_follow(self):
         """Chamar após cada follow real: contabiliza e dorme."""
         self._follows_no_run += 1
-        if self._follows_no_run % config.PAUSA_LONGA_CADA == 0:
+        # PAUSA_LONGA_CADA = 0 → SEM pausa longa (e evita ZeroDivisionError no `% 0`).
+        if config.PAUSA_LONGA_CADA and self._follows_no_run % config.PAUSA_LONGA_CADA == 0:
             self.dormir(config.PAUSA_LONGA, "pausa longa")
         else:
             self.dormir(config.DELAY_FOLLOW, "entre follows")

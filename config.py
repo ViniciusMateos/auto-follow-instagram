@@ -85,6 +85,10 @@ MAX_POSTS_POR_RUN = 5         # (só vale com APLICAR_CAPS=True) posts por execu
 # 0 = sem limite (vai até o IG bloquear). Vale INDEPENDENTE de APLICAR_CAPS.
 LIMITE_FOLLOWS_RUN = 0
 
+# Limite de INTERAÇÕES de follow neste run = público + pedido a privado (toda ação que bate
+# no endpoint de seguir). É o que o IG conta pro rate-limit. 0 = sem limite. Independe de caps.
+LIMITE_INTERACOES_RUN = 0
+
 # Reservado (ainda NÃO lido no fluxo atual): espera entre execuções em sequência.
 USAR_DELAY_ENTRE_CHATS = True
 DELAY_ENTRE_CHATS = (120, 300)
