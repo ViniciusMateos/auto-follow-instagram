@@ -254,6 +254,7 @@ class Guard:
         self.pendentes = 0           # privadas (pedido enviado)
         self.pulados = 0             # já seguia / privado(config) / etc.
         self.falhas_seguidas = 0     # erros transitórios consecutivos (reseta no sucesso)
+        self.likers_vazios_seguidos = 0  # posts seguidos com likers vazio/não-JSON (reseta ao vir likers)
 
     def checar_janela(self, ignorar=False):
         if ignorar or not config.APLICAR_CAPS or not getattr(config, "USAR_JANELA", False):

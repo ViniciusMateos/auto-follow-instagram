@@ -128,6 +128,10 @@ COOLDOWN_BLOQUEIO_HORAS = 36
 TENTATIVAS_POR_FOLLOW = 3
 MAX_FALHAS_SEGUIDAS = 10
 
+# likers voltando vazio/não-JSON em série = soft-throttle no endpoint de curtidores.
+# Depois de N posts seguidos assim, a run só cicla post vazio (improdutiva) — para limpo.
+MAX_LIKERS_VAZIOS_SEGUIDOS = 6
+
 # ───────────────── Leitura da thread ─────────────────
 # OFICIAL agora = PAGINAÇÃO DIRETA (ig.ler_mensagens): POST /api/graphql com
 # IGDMessageListOffMsysQuery, cursor a cursor, ~2s entre páginas. É o que o PRÓPRIO

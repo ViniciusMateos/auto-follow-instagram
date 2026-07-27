@@ -208,12 +208,20 @@ def processar_post(ig, p, state, guard, dry, idx=0, total_posts=0):
         likers = ig.get_likers(p["media_id"])
     except ErroTransitorio as e:
         # likers vazio/lixo (soft-throttle) → PULA o post SEM marcar; retoma no próximo run.
-        # Não derruba a run: se for a conta toda bloqueada, os próximos posts também vão pular
-        # e o log mostra isso claramente, mas a run termina limpa em vez de crashar no post 1.
-        log.warning("│ likers indisponível de @%s (%s) — pulando o post sem marcar",
-                    p.get("autor") or "?", e)
+        # Não derruba a run num engasgo pontual. MAS se vier em SÉRIE, o IG estrangulou o
+        # endpoint de curtidores nessa conta e a run só cicla post vazio (improdutiva) — para limpo.
+        guard.likers_vazios_seguidos += 1
+        log.warning("│ likers indisponível de @%s (%s) — pulando o post sem marcar (%d/%d)",
+                    p.get("autor") or "?", e,
+                    guard.likers_vazios_seguidos, config.MAX_LIKERS_VAZIOS_SEGUIDOS)
+        if guard.likers_vazios_seguidos >= config.MAX_LIKERS_VAZIOS_SEGUIDOS:
+            raise BloqueioDetectado(
+                f"{guard.likers_vazios_seguidos} posts seguidos com likers vazio/não-JSON — o IG "
+                f"estrangulou o endpoint de curtidores nessa conta. Parando pra não ciclar em "
+                f"falso; dá um respiro na conta.")
         return 0
     autor = p.get("autor") or "?"
+    guard.likers_vazios_seguidos = 0          # veio likers de verdade → zera o contador
     log.info("┌─ POST de @%s  (%s) — %d curtidores", autor, p["code"], len(likers))
 
     # A barra mede os CURTIDORES deste post (anda de verdade: ~32 passos), e o rótulo
