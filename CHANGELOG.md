@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.2] — 2026-07-27
+
+### Corrigido
+- fix: **estrangulamento de likers** — quando o endpoint de curtidores devolve vazio/não-JSON em 6 posts seguidos (`MAX_LIKERS_VAZIOS_SEGUIDOS`), o run **para limpo** com o saldo intacto, em vez de ciclar post vazio em falso até parada manual
+
+### Documentação
+- docs: README documenta a parada por estrangulamento de likers (6 vazios seguidos)
+
 ## [1.1.1] — 2026-07-26
 
 ### Adicionado
