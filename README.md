@@ -111,6 +111,11 @@ Só **para** em sinal estruturado real (`feedback_required`/`spam`/`checkpoint`/
 ou após muitas falhas seguidas — e aí salva o screenshot + diz se a sessão está
 logada (distingue "ação bloqueada, conta sã" de "sessão caiu").
 
+Um caso à parte é o **estrangulamento dos likers**: o endpoint de curtidores começa a
+devolver vazio/não-JSON e o post é pulado sem marcar. Se isso acontecer em **6 posts
+seguidos** (`MAX_LIKERS_VAZIOS_SEGUIDOS`), o run **para limpo** com o saldo intacto —
+sem ficar ciclando post vazio em falso até uma parada manual.
+
 ## Arquitetura
 | Arquivo | Papel |
 |---------|-------|
