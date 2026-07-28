@@ -29,7 +29,10 @@ THREAD_URL = f"https://www.instagram.com/direct/t/{THREAD_ID}/"
 # ninguém "importar num bot e copiar pros outros". Override por IG_SESSION_FILE.
 SESSION_FILE = os.environ.get("IG_SESSION_FILE") or os.path.join(
     os.path.dirname(os.path.dirname(_BASE)), "session_cookies.json")
-USER_DATA_DIR = os.path.join(_BASE, "browser_profile")   # ancorado na pasta do projeto
+# profile do Chromium — sobrescritível por env (IG_USER_DATA_DIR). O backend aponta um profile
+# POR CONTA, pra cada conta ser um "device" distinto pro IG (senão conectar/rodar uma conta mata
+# a sessão das outras no mesmo device compartilhado).
+USER_DATA_DIR = os.environ.get("IG_USER_DATA_DIR") or os.path.join(_BASE, "browser_profile")
 
 
 # ─────────────────────── Proxy (opcional, configurável pelo app) ──────────

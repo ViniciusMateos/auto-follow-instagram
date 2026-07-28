@@ -82,7 +82,7 @@ def modo_importar_cookies(path):
     with IG() as ig:
         ok = ig.importar_cookies(cookies)
     if ok:
-        log.info("Sessão logada! Pode rodar `python main.py --dry-run`.")
+        log.info("Sessão logada! Já pode rodar os bots.")
         return
     # Sair != 0 aqui é obrigatório: quem chama é o app ("Conectar Instagram"), e ele decide
     # pelo código de saída se avisa "conectado" ou "deu ruim". Saindo 0 numa falha, o app
