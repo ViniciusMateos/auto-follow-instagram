@@ -144,7 +144,10 @@ def _fetch_transitorio(msg) -> bool:
     return any(k in m for k in (
         "failed to fetch", "networkerror", "load failed", "net::err",
         "err_network", "err_internet", "err_connection", "err_timed_out", "err_name_not_resolved",
-        "abort", "err_proxy"))   # abort = timeout do AbortController; err_proxy = túnel caiu
+        "abort", "err_proxy",   # abort = timeout do AbortController; err_proxy = túnel caiu
+        # página no meio de uma navegação (goto do post estourou antes) — o evaluate seguinte
+        # estoura isso; é recuperável (espera assentar e tenta de novo), não é crash real.
+        "execution context was destroyed", "context was destroyed", "because of a navigation"))
 
 
 class IG:
@@ -216,14 +219,14 @@ class IG:
         self.fechar()
 
     # ───────────────── navegação / sessão ─────────────────
-    def ir(self, url, timeout=30000):
-        # 30s (era 60s fixo): as requisições saem pelo túnel reverso até o PC de casa; um goto
-        # que não resolveu em 30s não vai resolver — melhor falhar rápido do que pendurar meio
-        # minuto por página.
+    def ir(self, url, timeout=45000):
+        # 45s: as requisições saem pelo túnel reverso até o PC de casa (link residencial, tem
+        # jitter). Timeout mais folgado tolera os blips do proxy sem pendurar demais — melhor
+        # esperar um pouco mais do que derrubar a run num engasgo momentâneo do túnel.
         self.page.goto(url, wait_until="domcontentloaded", timeout=timeout)
         self.page.wait_for_timeout(1500)
 
-    def visitar_post(self, code, timeout=20000):
+    def visitar_post(self, code, timeout=30000):
         """Abre a página do post só pra dar um 'dwell' humano antes de seguir os curtidores.
         NÃO é essencial — os curtidores vêm da API (get_likers), não desta página. Por isso é
         NÃO-FATAL: pelo túnel a página do post às vezes estoura o timeout; se estourar, segue
@@ -746,7 +749,24 @@ class IG:
         """Lista de usuários que curtiram (uma página; o endpoint /likers/ já devolve o conjunto)."""
         users = []
         url = f"https://www.instagram.com/api/v1/media/{media_id}/likers/"
-        res = self.page.evaluate(JS_API_GET, {**self._base(), "url": url})
+        try:
+            res = self.page.evaluate(JS_API_GET, {**self._base(), "url": url})
+        except Exception as e:
+            # goto do post estourou antes → página em meio a navegação → "context destroyed".
+            # NÃO derruba a run: espera a página assentar, tenta 1x; se não der, pula o post.
+            if not _fetch_transitorio(str(e)):
+                raise
+            log.warning("│ likers: página instável (%s) — espero assentar e tento de novo",
+                        str(e).splitlines()[0][:50])
+            try:
+                self.page.wait_for_load_state("domcontentloaded", timeout=8000)
+            except Exception:
+                pass
+            self.page.wait_for_timeout(1500)
+            try:
+                res = self.page.evaluate(JS_API_GET, {**self._base(), "url": url})
+            except Exception as e2:
+                raise ErroTransitorio(f"likers falhou (página instável): {str(e2).splitlines()[0][:60]}")
         checar_bloqueio(res["status"], res["text"])
         if res["status"] != 200:
             log.warning("likers HTTP %s para media %s", res["status"], media_id)

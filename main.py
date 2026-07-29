@@ -290,18 +290,23 @@ def processar_post(ig, p, state, guard, dry, idx=0, total_posts=0):
     # Volta pra thread (dwell humano). NÃO-FATAL: a reação é um fetch graphql (não precisa
     # estar NA página da thread), então se o túnel engasgar nesse goto a gente segue e reage
     # mesmo assim — era esse goto que derrubava o run DEPOIS de já ter seguido os 99 curtidores.
-    try:
-        ig.ir(config.THREAD_URL)
-    except Exception as e:
-        # o goto estourou (túnel/proxy) → a PÁGINA fica quebrada e o page.evaluate seguinte
-        # (reagir) PENDURA pra sempre (o hang de ~13min até o watchdog matar, aparecendo como
-        # "Ctrl+C"). Tenta MAIS UMA vez (blip momentâneo se recupera); se falhar de novo,
-        # PARA LIMPO agora com o saldo — os follows deste post já foram salvos, retoma depois.
-        log.warning("  ~ não voltei pra thread (%s) — 1 tentativa a mais…", str(e).splitlines()[0][:45])
+    # Volta pra thread TOLERANDO blip do proxy: o túnel de casa engasga por SEGUNDOS, então tenta
+    # algumas vezes com pausa entre elas (timeout folgado) antes de desistir. Se o goto estoura, a
+    # página fica quebrada e o page.evaluate seguinte pendura — por isso a gente NÃO segue sem ter
+    # voltado. Só para limpo depois de esgotar as tentativas (os follows deste post já estão salvos).
+    voltou = False
+    for tent in range(4):
         try:
-            ig.ir(config.THREAD_URL, timeout=20000)
-        except Exception:
-            raise PaginaTravada("não voltei pra thread (túnel travou) — parando limpo pra não pendurar")
+            ig.ir(config.THREAD_URL, timeout=45000)
+            voltou = True
+            break
+        except Exception as e:
+            log.warning("  ~ não voltei pra thread (%s) — tentativa %d/4, esperando o túnel voltar…",
+                        str(e).splitlines()[0][:45], tent + 1)
+            guard.dormir((6, 12), "esperando o túnel voltar")
+    if not voltou:
+        raise PaginaTravada("não voltei pra thread após 4 tentativas (túnel instável) — "
+                            "parando limpo pra não pendurar")
     guard.dormir(config.DELAY_ACAO_UI, "voltando à thread")
     if dry:
         log.info("└─ [dry] reagiria/marcaria — agiria em %d, pulou %d (de @%s)",
@@ -384,6 +389,8 @@ def run(dry=False, start_after=None, debug=False, ignorar_janela=False):
             log.info("Parando (cap atingido): %s", e)
         except PaginaTravada as e:
             log.warning("Parando limpo: %s", e)   # túnel engasgou — evita o hang, retoma depois
+            # marcador pro backend avisar no push que foi PROXY (não bloqueio/conta) e pedir pra tentar depois
+            log.warning("[proxy] instabilidade do proxy/túnel — tente rodar de novo mais tarde.")
         except BloqueioDetectado as e:
             tratar_erro(e, "BLOQUEIO do Instagram — parando o run")
             try:
