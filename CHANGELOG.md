@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.4] — 2026-07-29
+
+### Corrigido
+- fix: **tolera instabilidade do proxy/túnel** — `get_likers` não crasha mais quando o `goto` trava no meio de uma navegação ("Execution context was destroyed"): trata como transitório e pula o post
+- fix: **"voltar pra thread"** tenta 4x com pausa entre elas antes de parar; timeouts de página mais folgados (`ir` 45s, `visitar_post` 30s) — um blip do proxy não derruba mais a run
+
+### Modificado
+- update: a parada por túnel marca `[proxy]` pro app avisar que foi o proxy (não bloqueio)
+
 ## [1.1.3] — 2026-07-29
 
 ### Adicionado
