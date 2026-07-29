@@ -116,6 +116,12 @@ devolver vazio/não-JSON e o post é pulado sem marcar. Se isso acontecer em **6
 seguidos** (`MAX_LIKERS_VAZIOS_SEGUIDOS`), o run **para limpo** com o saldo intacto —
 sem ficar ciclando post vazio em falso até uma parada manual.
 
+E os **engasgos do proxy/túnel** (o link residencial tem jitter): um `goto` de página
+pesado pode estourar o timeout num blip. O bot **tolera** — tenta de novo algumas vezes
+com pausa antes de desistir, e se a página fica no meio de uma navegação ele **não
+crasha** (trata como transitório e pula o post). Só para **limpo** — avisando que foi o
+proxy (não bloqueio) — se o túnel ficar ruim de vez; aí é só tentar mais tarde.
+
 ## Arquitetura
 | Arquivo | Papel |
 |---------|-------|
