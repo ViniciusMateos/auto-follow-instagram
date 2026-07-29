@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.3] — 2026-07-29
+
+### Adicionado
+- feat: profile do Chromium **por conta** (`IG_USER_DATA_DIR`) — o backend aponta um profile por conta pra isolar o "device" no IG (evita que conectar/rodar uma conta derrube a sessão das outras)
+
+### Modificado
+- update: mensagem pós-login **universal** ("já pode rodar os bots") em vez da dica do CLI
+
 ## [1.1.2] — 2026-07-27
 
 ### Corrigido
