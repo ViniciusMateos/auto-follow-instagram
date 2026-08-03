@@ -189,6 +189,7 @@ class IG:
             else:
                 raise
         self.page = self.ctx.pages[0] if self.ctx.pages else self.ctx.new_page()
+        self.page.set_default_timeout(20000)   # ação do Playwright falha em 20s em vez de pendurar
         # captura o www-claim REAL que o IG manda no header das respostas. Sem ele (mandando
         # "0"), o /likers/ devolve a versão DEGRADADA (~13 de 1198); com o claim real, o IG
         # devolve a página cheia (~55-98), igual ao navegador. Ver captura "captura de likes".
@@ -676,6 +677,15 @@ class IG:
                 if _tem_mensagens(d):
                     data = d
                     break
+                # erro 1357031 "conteúdo temporariamente indisponível" = o IG botou uma LIMITAÇÃO
+                # TEMPORÁRIA de leitura nessa conta (throttle nas queries) — não é falta de acesso ao
+                # grupo nem bloqueio permanente. Retry curto não cura: para limpo e tenta mais tarde.
+                if '"error":1357031' in (res["text"] or "") or "não está mais disponível" in (res["text"] or ""):
+                    raise RuntimeError(
+                        "o IG respondeu 'conteúdo temporariamente indisponível' (erro 1357031) na "
+                        "leitura do grupo — é uma LIMITAÇÃO TEMPORÁRIA de leitura nessa conta (não é "
+                        "bloqueio nem falta de acesso). Deixa a conta descansar um pouco e tenta de "
+                        "novo, ou roda em outra conta.")
                 # Resposta sem mensagens = rate limit OU doc_id velho. As duas coisas têm a
                 # MESMA causa histórica: o id da persisted query rotacionou. Antes de esperar,
                 # tenta pegar o id vivo do bundle da página (1x por run); se mudou, repete JÁ
@@ -699,8 +709,9 @@ class IG:
                     if tent < 4:
                         self.page.wait_for_timeout(espera)
                     continue
-                log.warning("  ~ pág %d: resposta fora do formato (%d bytes) — tentativa %d/5",
-                            i + 1, len(res.get("text") or ""), tent + 1)
+                _corpo = (res.get("text") or "").strip()
+                log.warning("  ~ pág %d: resposta fora do formato (%d bytes) — tentativa %d/5 — corpo: %s",
+                            i + 1, len(_corpo), tent + 1, _corpo[:220].replace("\n", " "))
                 if tent < 4:
                     self.page.wait_for_timeout(random.randint(3000, 10000))
             if data is None:
