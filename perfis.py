@@ -33,6 +33,8 @@ PERFIL_PADRAO = {
     "usar_delay_entre_chats": True,   # toggle: esperar entre um chat e outro
     "delay_entre_chats": [120, 300],
     "active_hours": [9, 23],
+    "humanizar": True,                # pausas navegando no meio (quebra o padrão de rajada)
+    "pausa_cada": 10,                 # a cada N follows reais, dá uma pausa humana (0 = off)
     "pular_ja_seguidos": True,
     "pular_pendentes": True,
     "seguir_privados": True,
@@ -75,6 +77,7 @@ _MAP_CONFIG = {
     "pausa_longa_cada": "PAUSA_LONGA_CADA", "pausa_longa": "PAUSA_LONGA",
     "usar_delay_entre_chats": "USAR_DELAY_ENTRE_CHATS",
     "delay_entre_chats": "DELAY_ENTRE_CHATS", "active_hours": "ACTIVE_HOURS",
+    "humanizar": "HUMANIZAR", "pausa_cada": "PAUSA_CADA",
     "pular_ja_seguidos": "PULAR_JA_SEGUIDOS", "pular_pendentes": "PULAR_PENDENTES",
     "seguir_privados": "SEGUIR_PRIVADOS",
     "start_from_oldest_se_vazio": "START_FROM_OLDEST_SE_VAZIO",

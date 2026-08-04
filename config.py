@@ -110,6 +110,10 @@ PAUSA_LONGA = (5, 15)         # duração da pausa longa (reduzida p/ modo rápi
 USAR_JANELA = False
 ACTIVE_HOURS = (9, 23)   # só vale se USAR_JANELA=True
 
+# ── Humanização: pausas navegando no meio do processo (quebra o padrão de rajada) ──
+HUMANIZAR = True          # a cada N follows, sai e navega (feed/story/curtir) e volta
+PAUSA_CADA = 10           # nº de follows reais entre uma pausa humana e outra (0 = desliga)
+
 # Quem pular
 PULAR_JA_SEGUIDOS = True      # friendship_status.following == True
 PULAR_PENDENTES = True        # outgoing_request == True

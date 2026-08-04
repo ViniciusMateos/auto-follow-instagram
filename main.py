@@ -24,6 +24,7 @@ Modular (modos e chats):
 """
 import argparse
 import os
+import random
 import sys
 import time
 import traceback
@@ -34,6 +35,7 @@ import perfis
 from safety import State, Guard, log, BloqueioDetectado, LimiteAtingido
 from safety import ErroTransitorio, PaginaTravada
 from ig import IG, extrair_post, tem_reacao
+from humano import pausa_humana
 
 LOGS_ERRO_DIR = os.path.join(config.OUTPUT_DIR, "logs")
 
@@ -278,6 +280,17 @@ def processar_post(ig, p, state, guard, dry, idx=0, total_posts=0):
             guard.pos_follow()
         else:
             log.warning("│    ! follow @%s sem confirmação: %s", uname, str(resp)[:140])
+
+        # HUMANIZAÇÃO: a cada N follows reais, sai e navega como gente (quebra o padrão de
+        # rajada). Aqui já é fase de follow (API), então navegar não quebra a leitura da thread.
+        # Não faz no último curtidor do post (a navegação de fim de post já cuida disso).
+        if config.HUMANIZAR and config.PAUSA_CADA and n < len(likers) - 1:
+            guard.acoes_desde_pausa = getattr(guard, "acoes_desde_pausa", 0) + 1
+            alvo = getattr(guard, "proxima_pausa", 0) or config.PAUSA_CADA
+            if guard.acoes_desde_pausa >= alvo:
+                guard.acoes_desde_pausa = 0
+                guard.proxima_pausa = random.randint(max(3, config.PAUSA_CADA - 2), config.PAUSA_CADA + 2)
+                pausa_humana(ig, guard)
 
     # fecha a barra deste post em 100% antes de ir pro próximo (o loop emite no topo,
     # então sem isso ela pararia no penúltimo curtidor)

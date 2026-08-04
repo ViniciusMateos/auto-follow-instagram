@@ -318,6 +318,109 @@ class IG:
         except Exception as e:
             log.warning("Não consegui restaurar a sessão salva: %s", e)
 
+    # ─────────── navegação humana (usada na pausa_humana) ───────────
+    def rolar(self, px=None):
+        """Rola o feed com a rodinha do mouse, como gente lendo."""
+        try:
+            self.page.mouse.wheel(0, px or random.randint(500, 900))
+            return True
+        except Exception:
+            return False
+
+    def _ja_curtido(self, art):
+        try:
+            return art.locator('svg[aria-label="Descurtir"], svg[aria-label="Unlike"]').count() > 0
+        except Exception:
+            return False
+
+    def curtir_visivel(self):
+        """Curte UM post visível via DOUBLE-TAP na mídia (o svg de curtir tem pointer-events off;
+        double-tap na foto SÓ curte, nunca descurte). Fallback: botão. Confirma pelo 'Descurtir'."""
+        vh = (self.page.viewport_size or {}).get("height", 820)
+        arts = self.page.locator("article")
+        try:
+            total = arts.count()
+        except Exception:
+            total = 0
+        for i in range(min(total, 15)):
+            art = arts.nth(i)
+            try:
+                box = art.bounding_box()
+                if not box or box["width"] < 200:
+                    continue
+                cx = box["x"] + box["width"] / 2
+                cy = box["y"] + min(box["height"] * 0.38, box["height"] - 90)
+                if cy < 130 or cy > vh - 130:
+                    continue
+                if self._ja_curtido(art):
+                    continue
+                self.page.mouse.dblclick(cx, cy)
+                self.page.wait_for_timeout(600)
+                if self._ja_curtido(art):
+                    return True
+                svg = art.locator('svg[aria-label="Curtir"], svg[aria-label="Like"]').first
+                if svg.count():
+                    anc = svg.locator('xpath=ancestor::*[@role="button" or self::button or @tabindex="0"][1]')
+                    (anc.first if anc.count() else svg).click(timeout=3000)
+                    self.page.wait_for_timeout(500)
+                    if self._ja_curtido(art):
+                        return True
+            except Exception:
+                continue
+        return False
+
+    def ver_stories(self, maximo):
+        """Abre o 1º story do tray e assiste alguns (best-effort). Retorna quantos passou."""
+        vistos = 0
+        cands = ['div[role="button"] canvas', 'button:has(canvas)',
+                 'ul li button[role="button"]', 'div[role="menu"] li div[role="button"]']
+        try:
+            alvo = None
+            for s in cands:
+                loc = self.page.locator(s).first
+                if loc.count():
+                    alvo = loc
+                    break
+            if not alvo:
+                return 0
+            alvo.click(timeout=4000)
+            self.page.wait_for_timeout(2000)
+            if "/stories/" not in self.page.url:
+                try:
+                    self.page.keyboard.press("Escape")
+                except Exception:
+                    pass
+                return 0
+            for _ in range(max(1, maximo)):
+                self.page.wait_for_timeout(random.randint(2500, 5000))
+                vistos += 1
+                self.page.keyboard.press("ArrowRight")
+                self.page.wait_for_timeout(800)
+                if "/stories/" not in self.page.url:
+                    break
+            try:
+                self.page.keyboard.press("Escape")
+            except Exception:
+                pass
+        except Exception:
+            try:
+                self.page.keyboard.press("Escape")
+            except Exception:
+                pass
+        return vistos
+
+    def explorar(self, rolagens=4):
+        """Dá uma passada no explorar e rola um pouco."""
+        try:
+            self.ir("https://www.instagram.com/explore/", timeout=30000)
+            for _ in range(max(1, rolagens)):
+                self.rolar(random.randint(500, 900))
+                self.page.wait_for_timeout(random.randint(1500, 3500))
+            return True
+        except Exception as e:
+            log.warning("~ explorar não rolou: %s", str(e).splitlines()[0][:50])
+            return False
+
     def carregar_tokens(self):
         """Relê os tokens da página. Só substitui os atuais se a leitura vier COMPLETA —
         uma releitura ruim (página em estado esquisito) não pode derrubar tokens que
